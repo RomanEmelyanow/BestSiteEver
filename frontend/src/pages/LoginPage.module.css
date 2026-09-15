@@ -1,0 +1,126 @@
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--gradient-bg);
+  position: relative;
+  overflow: hidden;
+}
+
+.content {
+  width: 100%;
+  max-width: 420px;
+  padding: var(--spacing-md);
+  z-index: 10;
+  animation: slideUp var(--transition-normal) ease-in-out;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: var(--spacing-2xl);
+}
+
+.header h1 {
+  font-size: var(--font-size-3xl);
+  font-weight: 700;
+  margin-bottom: var(--spacing-md);
+  background: var(--gradient-purple);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.header p {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-2xl);
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.formGroup label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.formGroup input {
+  padding: var(--spacing-md);
+  font-size: var(--font-size-base);
+  transition: all var(--transition-fast);
+}
+
+.formGroup input:focus {
+  border-color: var(--purple-dark);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+}
+
+.formGroup input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.submitBtn {
+  padding: var(--spacing-md) var(--spacing-lg);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: white;
+  background: var(--gradient-purple);
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
+}
+
+.submitBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4);
+}
+
+.submitBtn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.submitBtn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.footer {
+  text-align: center;
+}
+
+.decoration {
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  background: var(--gradient-purple);
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.1;
+  top: -200px;
+  right: -200px;
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .content {
+    max-width: 100%;
+  }
+
+  .header h1 {
+    font-size: var(--font-size-2xl);
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "school-internal-site",
+  "version": "1.0.0",
+  "description": "Внутренний школьный сайт для администрации и персонала",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "cd backend && npm start",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "allowScripts": {
+    "better-sqlite3@9.6.0": true,
+    "esbuild@0.21.5": true
+  }
+}
