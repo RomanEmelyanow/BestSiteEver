@@ -16,7 +16,7 @@ router.post('/', [
   body('username').notEmpty().withMessage('Имя пользователя обязательно'),
   body('password').isLength({ min: 6 }).withMessage('Пароль должен быть минимум 6 символов'),
   body('email').isEmail().withMessage('Неверный формат email'),
-  body('role').isIn(['admin', 'headmaster', 'deputy', 'teacher', 'tech', 'storekeeper'])
+  body('role').isIn(['admin', 'teacher', 'storekeeper', 'administration'])
     .withMessage('Недопустимая роль'),
   body('fullName').notEmpty().withMessage('Полное имя обязательно')
 ], authenticateToken, authorizeRoles('admin'), userController.createUser);
@@ -24,11 +24,14 @@ router.post('/', [
 // PUT /api/users/:id - обновить пользователя (админ или сам пользователь)
 router.put('/:id', [
   body('email').optional().isEmail().withMessage('Неверный формат email'),
-  body('role').optional().isIn(['admin', 'headmaster', 'deputy', 'teacher', 'tech', 'storekeeper'])
+  body('role').optional().isIn(['admin', 'teacher', 'storekeeper', 'administration'])
     .withMessage('Недопустимая роль'),
   body('fullName').optional().notEmpty().withMessage('Полное имя не может быть пустым'),
   body('isActive').optional().isBoolean().withMessage('isActive должно быть boolean')
 ], authenticateToken, userController.updateUser);
+
+// PUT /api/users/:id/classroom - сменить кабинет пользователя (только админ)
+router.put('/:id/classroom', authenticateToken, authorizeRoles('admin'), userController.setUserClassroom);
 
 // DELETE /api/users/:id - удалить пользователя (только админ)
 router.delete('/:id', authenticateToken, authorizeRoles('admin'), userController.deleteUser);

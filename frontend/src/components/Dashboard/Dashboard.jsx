@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
+import toast from 'react-hot-toast'
 import { useAuth } from '../../hooks/useAuth'
-import { userService } from '../../services/api'
+import { useConfirm } from '../../context/ConfirmContext'
+import GlassSelect from '../GlassSelect'
+import { authService, userService } from '../../services/api'
 import styles from './Dashboard.module.css'
 
 const roleStats = {
@@ -14,12 +17,17 @@ const roleStats = {
 
 export default function Dashboard() {
   const { user, token } = useAuth()
+  const confirm = useConfirm()
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeUsers: 0,
     roles: {},
     recentActivity: [],
   })
+  const [usersList, setUsersList] = useState([])
+  const [classrooms, setClassrooms] = useState([])
+  const [selectedClassroomId, setSelectedClassroomId] = useState('')
+  const [newClassroomNumber, setNewClassroomNumber] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -29,7 +37,10 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true)
-      const users = await userService.getAllUsers(token)
+      const [users, classroomsData] = await Promise.all([
+        userService.getAllUsers(token),
+        authService.getClassrooms(token),
+      ])
 
       const totalUsers = users.length
       const activeUsers = users.filter(u => u.is_active).length
@@ -48,6 +59,11 @@ export default function Dashboard() {
           icon: '👤',
         }))
 
+      setUsersList(users)
+      setClassrooms(classroomsData)
+      setSelectedClassroomId(prev =>
+        classroomsData.some(c => String(c.id) === prev) ? prev : ''
+      )
       setStats({
         totalUsers,
         activeUsers,
@@ -59,6 +75,48 @@ export default function Dashboard() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleAddClassroom = async (e) => {
+    e.preventDefault()
+    const number = newClassroomNumber.trim()
+    if (!number) return
+    try {
+      await authService.createClassroom(number, token)
+      toast.success(`Кабинет ${number} добавлен`)
+      setNewClassroomNumber('')
+      fetchDashboardData()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Ошибка добавления кабинета')
+    }
+  }
+
+  const handleDeleteClassroom = async (classroom, assigned) => {
+    const assignedNote = assigned.length > 0
+      ? ` Он присвоен: ${assigned.map(u => u.full_name).join(', ')}. Привязка будет снята.`
+      : ''
+    const ok = await confirm({
+      title: 'Удаление кабинета',
+      message: `Удалить кабинет ${classroom.number}?${assignedNote}`,
+      confirmLabel: 'Удалить',
+      danger: true,
+    })
+    if (!ok) return
+    try {
+      await authService.deleteClassroom(classroom.id, token)
+      toast.success(`Кабинет ${classroom.number} удалён`)
+      setSelectedClassroomId('')
+      fetchDashboardData()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Ошибка удаления кабинета')
+    }
+  }
+
+  const handleDeleteSelected = async () => {
+    const classroom = classrooms.find(c => String(c.id) === selectedClassroomId)
+    if (!classroom) return
+    const assigned = usersList.filter(u => u.classroom_id === classroom.id)
+    await handleDeleteClassroom(classroom, assigned)
   }
 
   if (loading) {
@@ -168,6 +226,51 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {user?.role === 'admin' && (
+          <div className={styles.classroomsSection}>
+            <h2 className={styles.classroomTitle}>Кабинеты</h2>
+            <div className={styles.classroomRow}>
+              <GlassSelect
+                className={styles.classroomSelect}
+                value={selectedClassroomId}
+                onChange={setSelectedClassroomId}
+                placeholder="Выберите кабинет"
+                options={classrooms.map(c => {
+                  const count = usersList.filter(u => u.classroom_id === c.id).length
+                  return {
+                    value: String(c.id),
+                    label: count > 0 ? `${c.number} — назначен: ${count}` : c.number,
+                  }
+                })}
+              />
+              <button
+                className={styles.deleteClassroomBtn}
+                disabled={!selectedClassroomId}
+                onClick={handleDeleteSelected}
+              >
+                Удалить
+              </button>
+              <form className={styles.addClassroomForm} onSubmit={handleAddClassroom}>
+                <input
+                  className={styles.addClassroomInput}
+                  value={newClassroomNumber}
+                  onChange={e => setNewClassroomNumber(e.target.value)}
+                  placeholder="Номер кабинета"
+                />
+                <button type="submit" className={styles.viewAllBtn} disabled={!newClassroomNumber.trim()}>
+                  Добавить
+                </button>
+              </form>
+            </div>
+
+            {classrooms.length === 0 && (
+              <p className={styles.classroomHint}>
+                Кабинетов пока нет — добавьте первый через форму справа
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

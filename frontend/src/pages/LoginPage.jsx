@@ -77,10 +77,7 @@ export default function LoginPage() {
         </form>
 
         <div className={styles.footer}>
-          <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-tertiary)' }}>
-            Данные для входа выдаёт администратор
-          </p>
-          <p style={{ marginTop: 'var(--spacing-sm)', fontSize: 'var(--font-size-sm)' }}>
+          <p style={{ fontSize: 'var(--font-size-sm)' }}>
             Еще нет аккаунта? <a href="/register" style={{ color: 'var(--purple-light)', textDecoration: 'none' }}>Зарегистрируйтесь</a>
           </p>
         </div>

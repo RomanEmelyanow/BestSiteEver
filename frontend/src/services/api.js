@@ -32,10 +32,34 @@ export const authService = {
     return response.data
   },
 
+  getRegistrationRequests: async (token) => {
+    const client = createAuthClient(token)
+    const response = await client.get('/auth/registration-requests')
+    return response.data
+  },
+
+  approveRegistrationRequest: async (id, role, token) => {
+    const client = createAuthClient(token)
+    const response = await client.post(`/auth/registration-requests/${id}/approve`, { role })
+    return response.data
+  },
+
   // Кабинеты
   getClassrooms: async (token) => {
     const client = createAuthClient(token)
     const response = await client.get('/auth/classrooms')
+    return response.data
+  },
+
+  createClassroom: async (number, token) => {
+    const client = createAuthClient(token)
+    const response = await client.post('/auth/classrooms', { number })
+    return response.data
+  },
+
+  deleteClassroom: async (id, token) => {
+    const client = createAuthClient(token)
+    const response = await client.delete(`/auth/classrooms/${id}`)
     return response.data
   },
 
@@ -79,6 +103,18 @@ export const authService = {
   updateRequest: async (requestId, data, token) => {
     const client = createAuthClient(token)
     const response = await client.patch(`/auth/requests/${requestId}`, data)
+    return response.data
+  },
+
+  deleteRequest: async (requestId, token) => {
+    const client = createAuthClient(token)
+    const response = await client.delete(`/auth/requests/${requestId}`)
+    return response.data
+  },
+
+  redirectRequest: async (requestId, recipientGroup, token) => {
+    const client = createAuthClient(token)
+    const response = await client.post(`/auth/requests/${requestId}/redirect`, { recipient_group: recipientGroup })
     return response.data
   },
 
@@ -126,6 +162,13 @@ export const userService = {
 
   deleteUser: async (id, token) => {
     const response = await axios.delete(`${API_URL}/users/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    return response.data
+  },
+
+  setUserClassroom: async (id, classroomId, token) => {
+    const response = await axios.put(`${API_URL}/users/${id}/classroom`, { classroomId }, {
       headers: { Authorization: `Bearer ${token}` },
     })
     return response.data

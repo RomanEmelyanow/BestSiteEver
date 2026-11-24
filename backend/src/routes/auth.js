@@ -1,6 +1,6 @@
 import express from 'express';
 import { body } from 'express-validator';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 import * as authController from '../controllers/auth.controller.js';
 
 const router = express.Router();
@@ -36,6 +36,12 @@ router.get('/requests', authenticateToken, authController.getRequests);
 // PATCH /api/auth/requests/:id - обновить заявку
 router.patch('/requests/:id', authenticateToken, authController.updateRequest);
 
+// DELETE /api/auth/requests/:id - удалить заявку из архива (админ)
+router.delete('/requests/:id', authenticateToken, authController.deleteRequest);
+
+// POST /api/auth/requests/:id/redirect - переадресовать заявку админу/завхозу
+router.post('/requests/:id/redirect', authenticateToken, authController.redirectRequest);
+
 // GET /api/auth/requests/history/:user_id - история заявок пользователя
 router.get('/requests/history/:user_id', authenticateToken, authController.getRequestHistory);
 
@@ -45,6 +51,12 @@ router.get('/requests/count', authenticateToken, authController.getRequestCount)
 // Новые маршруты для кабинетов
 // GET /api/auth/classrooms - получить все активные кабинеты
 router.get('/classrooms', authenticateToken, authController.getClassrooms);
+
+// POST /api/auth/classrooms - создать кабинет (админ)
+router.post('/classrooms', authenticateToken, authorizeRoles('admin'), authController.createClassroom);
+
+// DELETE /api/auth/classrooms/:id - удалить кабинет (админ)
+router.delete('/classrooms/:id', authenticateToken, authorizeRoles('admin'), authController.deleteClassroom);
 
 // GET /api/auth/users/:id/classrooms - получить кабинеты конкретного пользователя
 router.get('/users/:id/classrooms', authenticateToken, authController.getUserClassrooms);

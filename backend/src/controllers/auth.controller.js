@@ -2,6 +2,23 @@ import bcrypt from 'bcryptjs';
 import db from '../config/database.js';
 import { generateToken } from '../middleware/auth.js';
 
+export const ROLES = ['admin', 'teacher', 'storekeeper', 'administration'];
+export const RECIPIENT_GROUPS = ['admin', 'storekeeper'];
+export const RECIPIENT_LABELS = { admin: 'Админ', storekeeper: 'Завхоз' };
+export const REQUEST_STATUSES = ['sent', 'completed', 'impossible'];
+
+const roleToGroup = (role) => role;
+
+const withRequestDetails = (request, dbData) => {
+  const sender = dbData.users.find(u => u.id === request.sender_id);
+  const classroom = dbData.classrooms.find(c => c.id === request.classroom_id);
+  return {
+    ...request,
+    sender_name: sender ? sender.full_name : null,
+    classroom_number: classroom ? classroom.number : null,
+  };
+};
+
 // Получение всех активных кабинетов
 export const getClassrooms = async (req, res) => {
   try {
@@ -25,7 +42,6 @@ export const getUserClassrooms = async (req, res) => {
     const { id } = req.params;
     const userId = parseInt(id);
 
-    // Проверяем права: пользователь может смотреть только свои кабинеты, админ - любые
     if (req.user.role !== 'admin' && req.user.id !== userId) {
       return res.status(403).json({ message: 'Доступ запрещен' });
     }
@@ -52,34 +68,24 @@ export const assignUserClassroom = async (req, res) => {
     const { classroom_id } = req.body;
     const userId = parseInt(id);
 
-    // Проверяем права: только админ может назначать чужие кабинеты, пользователь - только свои
     if (req.user.role !== 'admin' && req.user.id !== userId) {
       return res.status(403).json({ message: 'Доступ запрещен' });
     }
 
-    // Проверяем, что кабинет существует и активен
     const classroom = db.prepare('SELECT * FROM classrooms WHERE id = ? AND is_active = 1').get(classroom_id);
     if (!classroom) {
       return res.status(404).json({ message: 'Кабинет не найден или неактивен' });
     }
 
-    // Проверяем, не назначен ли уже этот кабинет пользователю
     const existing = db.prepare('SELECT * FROM user_classrooms WHERE user_id = ? AND classroom_id = ?').get(userId, classroom_id);
     if (existing) {
       return res.status(409).json({ message: 'Кабинет уже назначен пользователю' });
     }
 
-    // Назначаем кабинет
     const result = db.prepare(`
       INSERT INTO user_classrooms (user_id, classroom_id, assigned_at)
       VALUES (?, ?, ?)
     `).run(userId, classroom_id, new Date().toISOString());
-
-    // Логируем
-    db.prepare(`
-      INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(req.user.id, 'ASSIGN_CLASSROOM', 'user_classrooms', result.lastInsertRowid, JSON.stringify({ userId, classroomId: classroom_id }));
 
     res.status(201).json({ message: 'Кабинет успешно назначен', linkId: result.lastInsertRowid });
   } catch (error) {
@@ -95,7 +101,6 @@ export const removeUserClassroom = async (req, res) => {
     const userId = parseInt(id);
     const classroom_id = parseInt(classroomId);
 
-    // Проверяем права: только админ может удалять чужие кабинеты, пользователь - только свои
     if (req.user.role !== 'admin' && req.user.id !== userId) {
       return res.status(403).json({ message: 'Доступ запрещен' });
     }
@@ -108,12 +113,6 @@ export const removeUserClassroom = async (req, res) => {
     if (result.changes === 0) {
       return res.status(404).json({ message: 'Связка не найдена' });
     }
-
-    // Логируем
-    db.prepare(`
-      INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(req.user.id, 'REMOVE_CLASSROOM', 'user_classrooms', null, JSON.stringify({ userId, classroomId: classroom_id }));
 
     res.json({ message: 'Кабинет успешно снят с пользователя' });
   } catch (error) {
@@ -128,21 +127,18 @@ export const getAvailableClassrooms = async (req, res) => {
     const { id } = req.params;
     const userId = parseInt(id);
 
-    // Проверяем права
     if (req.user.role !== 'admin' && req.user.id !== userId) {
       return res.status(403).json({ message: 'Доступ запрещен' });
     }
 
-    // Получаем все активные кабинеты, которые еще не назначены пользователю
+    const assigned = db.prepare('SELECT * FROM user_classrooms WHERE user_id = ?').all(userId);
+    const assignedIds = new Set(assigned.map(link => link.classroom_id));
     const classrooms = db.prepare(`
       SELECT c.id, c.number, c.is_active
       FROM classrooms c
       WHERE c.is_active = 1
-        AND c.id NOT IN (
-          SELECT classroom_id FROM user_classrooms WHERE user_id = ?
-        )
       ORDER BY c.number ASC
-    `).all(userId);
+    `).all().filter(c => !assignedIds.has(c.id));
 
     res.json(classrooms);
   } catch (error) {
@@ -151,52 +147,68 @@ export const getAvailableClassrooms = async (req, res) => {
   }
 };
 
+// Создание кабинета (админ)
+export const createClassroom = async (req, res) => {
+  try {
+    const number = String(req.body.number || '').trim();
+    if (!number) {
+      return res.status(400).json({ message: 'Укажите номер кабинета' });
+    }
+
+    const existing = db.prepare('SELECT * FROM classrooms').all().find(c => c.number === number);
+    if (existing) {
+      return res.status(400).json({ message: `Кабинет ${number} уже существует` });
+    }
+
+    const result = db.prepare('INSERT INTO classrooms (number, is_active) VALUES (?, ?)').run(number, 1);
+    res.status(201).json({ id: result.lastInsertRowid, number, is_active: 1 });
+  } catch (error) {
+    console.error('Create classroom error:', error);
+    res.status(500).json({ message: 'Внутренняя ошибка сервера' });
+  }
+};
+
+// Удаление кабинета (админ)
+export const deleteClassroom = async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const classroom = db.prepare('SELECT * FROM classrooms WHERE id = ?').get(id);
+    if (!classroom) {
+      return res.status(404).json({ message: 'Кабинет не найден' });
+    }
+
+    db.prepare('DELETE FROM user_classrooms WHERE classroom_id = ?').run(id);
+    db.prepare('DELETE FROM classrooms WHERE id = ?').run(id);
+    res.json({ message: 'Кабинет удалён' });
+  } catch (error) {
+    console.error('Delete classroom error:', error);
+    res.status(500).json({ message: 'Внутренняя ошибка сервера' });
+  }
+};
+
 // Создание новой заявки
 export const createRequest = async (req, res) => {
   try {
-    const { recipient_group, classroom_id, title, description } = req.body;
+    const { recipient_group, classroom_id, title = '', description = '' } = req.body;
     const sender_id = req.user.id;
 
-    // Валидация
-    if (!recipient_group || !['admin', 'storekeeper'].includes(recipient_group)) {
-      return res.status(400).json({ message: 'Недопустимая группа получателя' });
+    if (!recipient_group || !RECIPIENT_GROUPS.includes(recipient_group)) {
+      return res.status(400).json({ message: 'Недопустимый адресат заявки' });
     }
 
     if (!classroom_id) {
       return res.status(400).json({ message: 'Кабинет обязателен' });
     }
 
-    if (!title || title.trim().length < 5) {
-      return res.status(400).json({ message: 'Заголовок должен быть минимум 5 символов' });
-    }
-
-    if (!description || description.trim().length < 10) {
-      return res.status(400).json({ message: 'Описание должно быть минимум 10 символов' });
-    }
-
-    // Проверяем, что кабинет принадлежит пользователю
-    const userClassroom = db.prepare('SELECT * FROM user_classrooms WHERE user_id = ? AND classroom_id = ?').get(sender_id, classroom_id);
-    if (!userClassroom) {
-      return res.status(403).json({ message: 'Вы не можете создавать заявки для этого кабинета' });
-    }
-
-    // Проверяем, что кабинет существует и активен
     const classroom = db.prepare('SELECT * FROM classrooms WHERE id = ? AND is_active = 1').get(classroom_id);
     if (!classroom) {
       return res.status(404).json({ message: 'Кабинет не найден или неактивен' });
     }
 
-    // Создаем заявку
     const result = db.prepare(`
       INSERT INTO requests (sender_id, recipient_group, classroom_id, title, description, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(sender_id, recipient_group, classroom_id, title.trim(), description.trim(), 'pending', new Date().toISOString());
-
-    // Логируем
-    db.prepare(`
-      INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(req.user.id, 'CREATE_REQUEST', 'requests', result.lastInsertRowid, JSON.stringify({ recipient_group, classroom_id, title }));
+    `).run(sender_id, recipient_group, classroom_id, String(title).trim(), String(description).trim(), 'sent', new Date().toISOString());
 
     res.status(201).json({ message: 'Заявка успешно создана', requestId: result.lastInsertRowid });
   } catch (error) {
@@ -205,134 +217,73 @@ export const createRequest = async (req, res) => {
   }
 };
 
-// Получение заявок с фильтрацией
+// Получение заявок: direction=incoming (адресованные группе пользователя) или outgoing (созданные пользователем)
 export const getRequests = async (req, res) => {
   try {
-    const { recipient_group, sender_id, status, limit = 50, offset = 0 } = req.query;
+    const { direction = 'incoming', status, recipient_group } = req.query;
+    const dbData = {
+      users: db.prepare('SELECT * FROM users').all(),
+      classrooms: db.prepare('SELECT * FROM classrooms').all(),
+    };
 
-    let sql = `
-      SELECT r.*, u.full_name as sender_name, c.number as classroom_number
-      FROM requests r
-      JOIN users u ON r.sender_id = u.id
-      JOIN classrooms c ON r.classroom_id = c.id
-      WHERE 1=1
-    `;
-    const params = [];
-
-    // Фильтрация по группе получателя (пользователь видит только заявки для своей группы)
-    if (recipient_group) {
-      sql += ' AND r.recipient_group = ?';
-      params.push(recipient_group);
+    let requests;
+    if (direction === 'outgoing') {
+      requests = db.prepare('SELECT * FROM requests WHERE sender_id = ?').all(req.user.id);
     } else {
-      // По умолчанию фильтруем по роли пользователя
-      const allowedGroups = [];
-      if (req.user.role === 'admin' || req.user.role === 'headmaster' || req.user.role === 'deputy') {
-        allowedGroups.push('admin');
-      }
-      if (req.user.role === 'storekeeper') {
-        allowedGroups.push('storekeeper');
-      }
-      if (allowedGroups.length > 0) {
-        sql += ` AND r.recipient_group IN (${allowedGroups.map(() => '?').join(',')})`;
-        params.push(...allowedGroups);
-      }
+      const groups = req.user.role === 'admin' ? RECIPIENT_GROUPS : [roleToGroup(req.user.role)];
+      requests = groups.flatMap(group =>
+        db.prepare('SELECT * FROM requests WHERE recipient_group = ?').all(group)
+      );
     }
 
-    // Фильтрация по отправителю
-    if (sender_id) {
-      sql += ' AND r.sender_id = ?';
-      params.push(parseInt(sender_id));
-    } else {
-      // Учителя видят только свои заявки
-      if (req.user.role === 'teacher' || req.user.role === 'tech') {
-        sql += ' AND r.sender_id = ?';
-        params.push(req.user.id);
-      }
+    if (recipient_group && RECIPIENT_GROUPS.includes(recipient_group)) {
+      requests = requests.filter(r => r.recipient_group === recipient_group);
     }
 
-    // Фильтрация по статусу
-    if (status) {
-      sql += ' AND r.status = ?';
-      params.push(status);
+    if (status === 'archive') {
+      requests = requests.filter(r => ['completed', 'impossible'].includes(r.status));
+    } else if (status) {
+      requests = requests.filter(r => r.status === status);
     }
 
-    sql += ' ORDER BY r.created_at DESC LIMIT ? OFFSET ?';
-    params.push(parseInt(limit), parseInt(offset));
+    requests.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    const requests = db.prepare(sql).all(...params);
-
-    res.json(requests);
+    res.json(requests.map(request => withRequestDetails(request, dbData)));
   } catch (error) {
     console.error('Get requests error:', error);
     res.status(500).json({ message: 'Внутренняя ошибка сервера' });
   }
 };
 
-// Обновление заявки (изменение статуса, комментария)
+// Обработка заявки получателем: выполнить или невозможно выполнить
 export const updateRequest = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, admin_comment } = req.body;
     const requestId = parseInt(id);
 
-    // Получаем заявку
     const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(requestId);
     if (!request) {
       return res.status(404).json({ message: 'Заявка не найдена' });
     }
 
-    // Проверяем права: только админ/начальник могут обрабатывать заявки админа, завхоз - заявки завхоза
-    const canProcessAdmin = ['admin', 'headmaster', 'deputy'].includes(req.user.role) && request.recipient_group === 'admin';
-    const canProcessStorekeeper = req.user.role === 'storekeeper' && request.recipient_group === 'storekeeper';
-
-    if (!canProcessAdmin && !canProcessStorekeeper) {
+    if (req.user.role !== 'admin' && request.recipient_group !== roleToGroup(req.user.role)) {
       return res.status(403).json({ message: 'Недостаточно прав для обработки этой заявки' });
     }
 
-    // Проверяем статус - можно менять только pending заявки (кроме админа который может менять любые)
-    if (request.status !== 'pending' && req.user.role !== 'admin') {
-      return res.status(400).json({ message: 'Можно обрабатывать только новые заявки' });
+    if (request.status !== 'sent') {
+      return res.status(400).json({ message: 'Заявка уже обработана' });
     }
 
-    // Валидация статуса
-    if (status && !['pending', 'urgent', 'longterm', 'completed', 'impossible'].includes(status)) {
-      return res.status(400).json({ message: 'Недопустимый статус' });
+    if (!status || !['completed', 'impossible'].includes(status)) {
+      return res.status(400).json({ message: 'Заявку можно закрыть статусом «выполнено» или «невозможно выполнить»' });
     }
 
-    const updates = [];
-    const updateParams = [];
-
-    if (status) {
-      updates.push('status = ?');
-      updateParams.push(status);
-    }
-
-    if (admin_comment !== undefined) {
-      updates.push('admin_comment = ?');
-      updateParams.push(admin_comment);
-    }
-
-    if (status && status !== 'pending') {
-      updates.push('processed_at = ?');
-      updateParams.push(new Date().toISOString());
-      updates.push('processed_by = ?');
-      updateParams.push(req.user.id);
-    }
-
-    if (updates.length > 0) {
-      updateParams.push(requestId);
-      db.prepare(`
-        UPDATE requests
-        SET ${updates.join(', ')}
-        WHERE id = ?
-      `).run(...updateParams);
-    }
-
-    // Логируем
     db.prepare(`
-      INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(req.user.id, 'UPDATE_REQUEST', 'requests', requestId, JSON.stringify({ status, admin_comment }));
+      UPDATE requests
+      SET status = ?, admin_comment = ?, processed_at = ?, processed_by = ?
+      WHERE id = ?
+    `).run(status, admin_comment === undefined ? null : String(admin_comment), new Date().toISOString(), req.user.id, requestId);
 
     res.json({ message: 'Заявка успешно обновлена' });
   } catch (error) {
@@ -341,64 +292,88 @@ export const updateRequest = async (req, res) => {
   }
 };
 
-// История заявок пользователя
+// Удаление обработанной заявки из архива (только админ)
+export const deleteRequest = async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Доступ запрещен' });
+    }
+
+    const { id } = req.params;
+    const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(id);
+    if (!request) {
+      return res.status(404).json({ message: 'Заявка не найдена' });
+    }
+
+    db.prepare('DELETE FROM requests WHERE id = ?').run(id);
+    res.json({ message: 'Заявка удалена из архива' });
+  } catch (error) {
+    console.error('Delete request error:', error);
+    res.status(500).json({ message: 'Внутренняя ошибка сервера' });
+  }
+};
+
+// Переадресация необработанной заявки между админом и завхозом
+export const redirectRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { recipient_group: target } = req.body;
+    const requestId = parseInt(id);
+
+    const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(requestId);
+    if (!request) {
+      return res.status(404).json({ message: 'Заявка не найдена' });
+    }
+
+    if (req.user.role !== 'admin' && request.recipient_group !== roleToGroup(req.user.role)) {
+      return res.status(403).json({ message: 'Недостаточно прав для переадресации этой заявки' });
+    }
+
+    if (request.status !== 'sent') {
+      return res.status(400).json({ message: 'Переадресовать можно только необработанную заявку' });
+    }
+
+    if (!RECIPIENT_GROUPS.includes(target) || target === request.recipient_group) {
+      return res.status(400).json({ message: 'Заявку можно переадресовать только между админом и завхозом' });
+    }
+
+    db.prepare('UPDATE requests SET recipient_group = ? WHERE id = ?').run(target, requestId);
+    res.json({ message: `Заявка переадресована: ${RECIPIENT_LABELS[target]}` });
+  } catch (error) {
+    console.error('Redirect request error:', error);
+    res.status(500).json({ message: 'Внутренняя ошибка сервера' });
+  }
+};
+
+// История исходящих заявок пользователя
 export const getRequestHistory = async (req, res) => {
   try {
     const { user_id } = req.params;
     const targetUserId = parseInt(user_id);
 
-    // Проверяем права: пользователь видит только свою историю, админ - любую
     if (req.user.role !== 'admin' && req.user.id !== targetUserId) {
       return res.status(403).json({ message: 'Доступ запрещен' });
     }
 
-    const requests = db.prepare(`
-      SELECT r.*, c.number as classroom_number
-      FROM requests r
-      JOIN classrooms c ON r.classroom_id = c.id
-      WHERE r.sender_id = ?
-      ORDER BY r.created_at DESC
-    `).all(targetUserId);
+    const requests = db.prepare('SELECT * FROM requests WHERE sender_id = ?').all(targetUserId);
+    const dbData = {
+      users: db.prepare('SELECT * FROM users').all(),
+      classrooms: db.prepare('SELECT * FROM classrooms').all(),
+    };
 
-    res.json(requests);
+    res.json(requests.map(request => withRequestDetails(request, dbData)));
   } catch (error) {
     console.error('Get request history error:', error);
     res.status(500).json({ message: 'Внутренняя ошибка сервера' });
   }
 };
 
-// Количество непрочитанных/новых заявок
+// Количество необработанных входящих заявок
 export const getRequestCount = async (req, res) => {
   try {
-    let count = 0;
-
-    // Админ/начальник видят заявки для админа
-    if (['admin', 'headmaster', 'deputy'].includes(req.user.role)) {
-      const result = db.prepare(`
-        SELECT COUNT(*) as count
-        FROM requests
-        WHERE recipient_group = 'admin' AND status = 'pending'
-      `).get();
-      count = result.count;
-    }
-    // Завхоз видит заявки для завхоза
-    else if (req.user.role === 'storekeeper') {
-      const result = db.prepare(`
-        SELECT COUNT(*) as count
-        FROM requests
-        WHERE recipient_group = 'storekeeper' AND status = 'pending'
-      `).get();
-      count = result.count;
-    }
-    // Учителя видят только свои
-    else {
-      const result = db.prepare(`
-        SELECT COUNT(*) as count
-        FROM requests
-        WHERE sender_id = ? AND status = 'pending'
-      `).get(req.user.id);
-      count = result.count;
-    }
+    const groups = req.user.role === 'admin' ? RECIPIENT_GROUPS : [roleToGroup(req.user.role)];
+    const all = db.prepare('SELECT * FROM requests').all();
+    const count = all.filter(r => groups.includes(r.recipient_group) && r.status === 'sent').length;
 
     res.json({ count });
   } catch (error) {
@@ -411,7 +386,6 @@ export const login = async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    // Ищем пользователя
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
 
     if (!user) {
@@ -429,12 +403,6 @@ export const login = async (req, res) => {
     }
 
     const token = generateToken(user);
-
-    // Логируем успешный вход
-    db.prepare(`
-      INSERT INTO audit_logs (user_id, action, ip_address, details)
-      VALUES (?, ?, ?, ?)
-    `).run(user.id, 'LOGIN', req.ip, JSON.stringify({ success: true }));
 
     res.json({
       token,
@@ -454,12 +422,6 @@ export const login = async (req, res) => {
 
 export const logout = async (req, res) => {
   try {
-    // Логируем выход
-    db.prepare(`
-      INSERT INTO audit_logs (user_id, action, details)
-      VALUES (?, ?, ?)
-    `).run(req.user.id, 'LOGOUT', JSON.stringify({ success: true }));
-
     res.json({ message: 'Выход выполнен успешно' });
   } catch (error) {
     console.error('Logout error:', error);
@@ -492,41 +454,36 @@ export const getCurrentUser = async (req, res) => {
   }
 };
 
-// Регистрация заявки на создание аккаунта (упрощенная - без email, с кабинетами)
+// Регистрация заявки на создание аккаунта
 export const registerRequest = async (req, res) => {
   try {
-    const { username, password, fullName, classroomIds, recipientGroup } = req.body;
+    const { username, password, fullName, classroomIds = [] } = req.body;
 
-    // Валидация
-    if (!username || !password || !fullName) {
-      return res.status(400).json({ message: 'Все обязательные поля должны быть заполнены' });
+    const cleanUsername = String(username || '').trim();
+    const cleanFullName = String(fullName || '').trim();
+
+    if (!cleanUsername || !password || !cleanFullName) {
+      return res.status(400).json({ message: 'Логин, пароль и ФИО обязательны' });
     }
 
     if (password.length < 6) {
       return res.status(400).json({ message: 'Пароль должен быть минимум 6 символов' });
     }
 
-    if (!classroomIds || !Array.isArray(classroomIds) || classroomIds.length === 0) {
-      return res.status(400).json({ message: 'Выберите хотя бы один кабинет' });
+    if (classroomIds !== undefined && classroomIds !== null && (!Array.isArray(classroomIds) || classroomIds.length > 1)) {
+      return res.status(400).json({ message: 'Можно выбрать не более одного кабинета' });
     }
 
-    if (!['admin', 'storekeeper'].includes(recipientGroup)) {
-      return res.status(400).json({ message: 'Выберите корректную группу получателя' });
-    }
-
-    // Проверяем, не существует ли уже пользователь с таким username
-    const existingUser = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    const existingUser = db.prepare('SELECT * FROM users WHERE username = ?').get(cleanUsername);
     if (existingUser) {
-      return res.status(409).json({ message: 'Пользователь с таким именем уже существует' });
+      return res.status(409).json({ message: 'Пользователь с таким логином уже существует' });
     }
 
-    // Проверяем, нет ли уже заявки от этого пользователя
-    const existingRequest = db.prepare('SELECT * FROM registration_requests WHERE username = ?').get(username);
+    const existingRequest = db.prepare('SELECT * FROM registration_requests WHERE username = ?').get(cleanUsername);
     if (existingRequest) {
-      return res.status(409).json({ message: 'Заявка с таким именем уже подана' });
+      return res.status(409).json({ message: 'Заявка с таким логином уже подана' });
     }
 
-    // Проверяем, что все выбранные кабинеты существуют и активны
     for (const classroomId of classroomIds) {
       const classroom = db.prepare('SELECT * FROM classrooms WHERE id = ? AND is_active = 1').get(classroomId);
       if (!classroom) {
@@ -534,20 +491,17 @@ export const registerRequest = async (req, res) => {
       }
     }
 
-    // Хешируем пароль
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Создаем заявку
     const result = db.prepare(`
-      INSERT INTO registration_requests (username, password, email, full_name, classroom_ids, recipient_group, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO registration_requests (username, password, email, full_name, classroom_ids, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
-      username,
+      cleanUsername,
       hashedPassword,
-      null,  // email больше не обязателен
-      fullName,
+      null,
+      cleanFullName,
       JSON.stringify(classroomIds),
-      recipientGroup,
       'pending',
       new Date().toISOString()
     );
@@ -565,7 +519,6 @@ export const registerRequest = async (req, res) => {
 // Получение списка заявок на регистрацию (только для админа)
 export const getRegistrationRequests = async (req, res) => {
   try {
-    // Проверяем роль админа
     if (req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Доступ запрещен' });
     }
@@ -586,7 +539,6 @@ export const getRegistrationRequests = async (req, res) => {
 // Одобрение заявки на регистрацию
 export const approveRegistrationRequest = async (req, res) => {
   try {
-    // Проверяем роль админа
     if (req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Доступ запрещен' });
     }
@@ -594,13 +546,10 @@ export const approveRegistrationRequest = async (req, res) => {
     const { id } = req.params;
     const { role } = req.body;
 
-    // Валидация роли
-    const validRoles = ['admin', 'headmaster', 'deputy', 'teacher', 'tech', 'storekeeper'];
-    if (!role || !validRoles.includes(role)) {
+    if (!role || !ROLES.includes(role)) {
       return res.status(400).json({ message: 'Недопустимая роль' });
     }
 
-    // Получаем заявку
     const request = db.prepare('SELECT * FROM registration_requests WHERE id = ?').get(id);
     if (!request) {
       return res.status(404).json({ message: 'Заявка не найдена' });
@@ -610,13 +559,11 @@ export const approveRegistrationRequest = async (req, res) => {
       return res.status(400).json({ message: 'Заявка уже обработана' });
     }
 
-    // Создаем пользователя из заявки
     const userResult = db.prepare(`
       INSERT INTO users (username, password, email, role, full_name, is_active, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(request.username, request.password, null, role, request.full_name, 1, new Date().toISOString());
 
-    // Если в заявке есть classroom_ids, назначаем кабинеты пользователю
     if (request.classroom_ids) {
       try {
         const classroomIds = JSON.parse(request.classroom_ids);
@@ -631,18 +578,11 @@ export const approveRegistrationRequest = async (req, res) => {
       }
     }
 
-    // Обновляем статус заявки
     db.prepare(`
       UPDATE registration_requests
       SET status = ?, processed_at = ?, processed_by = ?
       WHERE id = ?
     `).run('approved', new Date().toISOString(), req.user.id, id);
-
-    // Логируем
-    db.prepare(`
-      INSERT INTO audit_logs (user_id, action, details)
-      VALUES (?, ?, ?)
-    `).run(req.user.id, 'APPROVE_REGISTRATION', JSON.stringify({ requestId: id, newUserId: userResult.lastInsertRowid, role }));
 
     res.json({ message: 'Заявка одобрена, пользователь создан', userId: userResult.lastInsertRowid });
   } catch (error) {

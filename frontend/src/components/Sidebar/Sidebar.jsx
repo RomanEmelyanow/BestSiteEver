@@ -1,40 +1,50 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { ROLE_LABELS } from '../../utils/labels'
+import {
+  IconArchive,
+  IconDashboard,
+  IconInbox,
+  IconLogout,
+  IconSchool,
+  IconSend,
+  IconUsers,
+} from '../Icons'
 import styles from './Sidebar.module.css'
-
-const navItems = [
-  {
-    title: 'Основное',
-    items: [
-      { path: '/admin', label: 'Панель управления', icon: '📊' },
-      { path: '/admin/users', label: 'Пользователи', icon: '👥' },
-      { path: '/admin/audit', label: 'Логи аудита', icon: '📋' },
-    ],
-  },
-  {
-    title: 'Заявки',
-    items: [
-      { path: '/admin/requests', label: 'Входящие заявки', icon: '📝' },
-      { path: '/admin/requests/history', label: 'История заявок', icon: '📜' },
-    ],
-  },
-  {
-    title: 'Кабинеты',
-    items: [
-      { path: '/admin/classrooms', label: 'Управление кабинетами', icon: '🚪' },
-    ],
-  },
-  {
-    title: 'Настройки',
-    items: [
-      { path: '/admin/settings', label: 'Системные настройки', icon: '⚙️' },
-    ],
-  },
-]
 
 export default function Sidebar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+
+  const isAdmin = user?.role === 'admin'
+  const canReceiveRequests = user?.role === 'admin' || user?.role === 'storekeeper'
+
+  const sections = [
+    {
+      title: 'Заявки',
+      items: [
+        ...(canReceiveRequests
+          ? [
+              { path: '/admin/requests/incoming', label: 'Входящие заявки', icon: <IconInbox /> },
+            ]
+          : []),
+        { path: '/admin/requests/outgoing', label: 'Исходящие заявки', icon: <IconSend /> },
+        ...(canReceiveRequests
+          ? [{ path: '/admin/requests/archive', label: 'Архив', icon: <IconArchive /> }]
+          : []),      ],
+    },
+    ...(isAdmin
+      ? [
+          {
+            title: 'Управление',
+            items: [
+              { path: '/admin', label: 'Панель управления', icon: <IconDashboard /> },
+              { path: '/admin/users', label: 'Пользователи', icon: <IconUsers /> },
+            ],
+          },
+        ]
+      : []),
+  ]
 
   const handleLogout = async () => {
     await logout()
@@ -44,22 +54,24 @@ export default function Sidebar() {
   return (
     <aside className={styles.sidebar}>
       <div className={styles.logo}>
-        <div style={{ fontSize: 'var(--font-size-2xl)' }}>🏫</div>
-        <div className={styles.logoText}>Администрирование</div>
+        <div className={styles.logoBadge}>
+          <IconSchool size={22} />
+        </div>
+        <div className={styles.logoText}>Школьный портал</div>
       </div>
 
       {user && (
         <div className={styles.userInfo}>
-          <div style={{ width: 40, height: 40, background: 'var(--gradient-purple)', borderRadius: '50%' }}></div>
+          <div className={styles.userAvatar}></div>
           <div>
             <h3>{user.fullName}</h3>
-            <span className={styles.userRole}>{user.role}</span>
+            <span className={styles.userRole}>{ROLE_LABELS[user.role] || user.role}</span>
           </div>
         </div>
       )}
 
       <nav>
-        {navItems.map((section) => (
+        {sections.map((section) => (
           <div key={section.title} className={styles.navSection}>
             <h4>{section.title}</h4>
             <ul className={styles.navList}>
@@ -67,6 +79,7 @@ export default function Sidebar() {
                 <li key={item.path} className={styles.navItem}>
                   <NavLink
                     to={item.path}
+                    end={item.path === '/admin'}
                     className={({ isActive }) =>
                       `${styles.navLink} ${isActive ? styles.active : ''}`
                     }
@@ -83,7 +96,7 @@ export default function Sidebar() {
 
       <div className={styles.footer}>
         <button onClick={handleLogout} className={styles.logoutBtn}>
-          <span>🚪</span>
+          <IconLogout size={18} />
           <span>Выйти</span>
         </button>
       </div>

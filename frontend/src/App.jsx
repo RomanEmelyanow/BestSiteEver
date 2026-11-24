@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './context/AuthContext'
+import { ConfirmProvider } from './context/ConfirmContext'
 import ProtectedRoute from './components/ProtectedRoute'
 
 // Pages
@@ -12,7 +13,8 @@ import NotFoundPage from './pages/NotFoundPage'
 function App() {
   return (
     <Router>
-      <AuthProvider>
+      <ConfirmProvider>
+        <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegistrationPage />} />
@@ -21,7 +23,7 @@ function App() {
           <Route
             path="/admin/*"
             element={
-              <ProtectedRoute requiredRole="admin">
+              <ProtectedRoute>
                 <AdminDashboard />
               </ProtectedRoute>
             }
@@ -34,13 +36,18 @@ function App() {
           position="top-right"
           toastOptions={{
             style: {
-              background: '#1a2547',
-              color: '#f0f4f8',
-              border: '1px solid #334155',
+              background: 'rgba(13, 17, 38, 0.88)',
+              color: '#f4f7ff',
+              border: '1px solid rgba(255, 255, 255, 0.16)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              borderRadius: '14px',
+              boxShadow: '0 8px 32px rgba(2, 6, 23, 0.45)',
             },
           }}
         />
-      </AuthProvider>
+        </AuthProvider>
+      </ConfirmProvider>
     </Router>
   )
 }

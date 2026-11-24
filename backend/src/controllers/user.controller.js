@@ -8,7 +8,22 @@ export const getAllUsers = async (req, res) => {
       FROM users ORDER BY created_at DESC
     `).all();
 
-    res.json(users);
+    const links = db.prepare('SELECT * FROM user_classrooms').all();
+    const linkByUser = new Map();
+    links.forEach(link => {
+      if (!linkByUser.has(link.user_id)) linkByUser.set(link.user_id, link);
+    });
+
+    const enriched = users.map(user => {
+      const link = linkByUser.get(user.id);
+      return {
+        ...user,
+        classroom_id: link ? link.classroom_id : null,
+        classroom_number: link ? link.number : null,
+      };
+    });
+
+    res.json(enriched);
   } catch (error) {
     console.error('Get all users error:', error);
     res.status(500).json({ message: 'Внутренняя ошибка сервера' });
@@ -58,12 +73,6 @@ export const createUser = async (req, res) => {
       INSERT INTO users (username, password, email, role, full_name)
       VALUES (?, ?, ?, ?, ?)
     `).run(username, hashedPassword, email, role, fullName);
-
-    // Аудит
-    db.prepare(`
-      INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(req.user.id, 'CREATE_USER', 'user', result.lastInsertRowid, JSON.stringify({ username, role, email }));
 
     res.status(201).json({
       id: result.lastInsertRowid,
@@ -128,12 +137,6 @@ export const updateUser = async (req, res) => {
 
     db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    // Аудит
-    db.prepare(`
-      INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(req.user.id, 'UPDATE_USER', 'user', id, JSON.stringify({ email, role, fullName, isActive }));
-
     const updatedUser = db.prepare(`
       SELECT id, username, email, role, full_name, is_active, created_at
       FROM users WHERE id = ?
@@ -142,6 +145,37 @@ export const updateUser = async (req, res) => {
     res.json(updatedUser);
   } catch (error) {
     console.error('Update user error:', error);
+    res.status(500).json({ message: 'Внутренняя ошибка сервера' });
+  }
+};
+
+export const setUserClassroom = async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { classroomId } = req.body;
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    if (!user) {
+      return res.status(404).json({ message: 'Пользователь не найден' });
+    }
+
+    db.prepare('DELETE FROM user_classrooms WHERE user_id = ?').run(id);
+
+    if (classroomId !== null && classroomId !== undefined && classroomId !== '') {
+      const cid = parseInt(classroomId);
+      const classroom = db.prepare('SELECT * FROM classrooms WHERE id = ? AND is_active = 1').get(cid);
+      if (!classroom) {
+        return res.status(400).json({ message: 'Кабинет не найден' });
+      }
+      db.prepare(`
+        INSERT INTO user_classrooms (user_id, classroom_id, assigned_at)
+        VALUES (?, ?, ?)
+      `).run(id, cid, new Date().toISOString());
+    }
+
+    res.json({ message: 'Кабинет обновлён' });
+  } catch (error) {
+    console.error('Set user classroom error:', error);
     res.status(500).json({ message: 'Внутренняя ошибка сервера' });
   }
 };
@@ -162,12 +196,7 @@ export const deleteUser = async (req, res) => {
     }
 
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
-
-    // Аудит
-    db.prepare(`
-      INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(req.user.id, 'DELETE_USER', 'user', id, JSON.stringify({ username: user.username, role: user.role }));
+    db.prepare('DELETE FROM user_classrooms WHERE user_id = ?').run(id);
 
     res.json({ message: 'Пользователь удален' });
   } catch (error) {

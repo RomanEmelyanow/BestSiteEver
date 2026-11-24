@@ -5,28 +5,53 @@
 }
 
 :root {
-  /* Цветовая палитра */
-  --bg-primary: #0a0e27;
-  --bg-secondary: #141b2f;
-  --bg-tertiary: #1a2547;
+  /* Liquid glass palette */
+  --bg-primary: transparent;
+  --bg-secondary: rgba(255, 255, 255, 0.07);
+  --bg-tertiary: rgba(255, 255, 255, 0.12);
 
-  --purple-dark: #7c3aed;
+  --purple-dark: #4f7dff;
   --purple-light: #a78bfa;
-  --purple-bright: #c084fc;
+  --purple-bright: #c4b5fd;
 
-  --text-primary: #f0f4f8;
-  --text-secondary: #cbd5e1;
-  --text-tertiary: #94a3b8;
+  --text-primary: #f4f7ff;
+  --text-secondary: rgba(244, 247, 255, 0.72);
+  --text-tertiary: rgba(244, 247, 255, 0.5);
 
-  --border: #334155;
-  --success: #10b981;
-  --error: #ef4444;
-  --warning: #f59e0b;
+  --border: rgba(255, 255, 255, 0.16);
+  --success: #34d399;
+  --error: #f87171;
+  --warning: #fbbf24;
+
+  /* Glass surfaces */
+  --glass-bg: rgba(255, 255, 255, 0.07);
+  --glass-bg-strong: rgba(255, 255, 255, 0.11);
+  --glass-border: rgba(255, 255, 255, 0.16);
+  --glass-blur: blur(24px) saturate(160%);
+  --glass-shadow: 0 8px 32px rgba(2, 6, 23, 0.45);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  --radius-lg: 24px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+  --radius-pill: 999px;
+
+  /* Размеры компонентов (масштабируются под разрешение) */
+  --sidebar-width: 280px;
+  --logo-badge: 40px;
+  --icon-lg: 60px;
+  --icon-md: 40px;
+  --avatar-md: 36px;
+  --btn-sm-size: 32px;
+  --select-min-width: 180px;
+  --modal-max-width: 480px;
+  --dialog-max-width: 420px;
+  --card-auth-max-width: 440px;
+  --card-reg-max-width: 460px;
 
   /* Градиенты */
-  --gradient-purple: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
-  --gradient-purple-dark: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%);
-  --gradient-bg: linear-gradient(to bottom right, #0f052a 0%, #2d1b4e 35%, #4c1d95 100%);
+  --gradient-purple: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 55%, #d946ef 100%);
+  --gradient-purple-dark: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+  --gradient-bg: transparent;
 
   /* Spacing */
   --spacing-xs: 4px;
@@ -65,13 +90,40 @@ html {
 
 body {
   font-family: var(--font-family);
-  background: var(--gradient-bg);
+  background: #04060f;
   color: var(--text-primary);
   line-height: var(--line-height-normal);
   font-size: var(--font-size-base);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
+  position: relative;
+}
+
+/* Жидкий градиентный фон */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -25%;
+  z-index: -1;
+  background:
+    radial-gradient(38% 42% at 16% 20%, rgba(59, 102, 255, 0.6) 0%, transparent 62%),
+    radial-gradient(42% 48% at 84% 26%, rgba(124, 58, 237, 0.5) 0%, transparent 66%),
+    radial-gradient(48% 52% at 62% 88%, rgba(37, 99, 235, 0.45) 0%, transparent 62%),
+    radial-gradient(34% 38% at 26% 78%, rgba(168, 85, 247, 0.4) 0%, transparent 66%),
+    radial-gradient(30% 34% at 50% 45%, rgba(99, 102, 241, 0.28) 0%, transparent 70%);
+  filter: blur(70px);
+  animation: liquidDrift 26s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes liquidDrift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+  100% {
+    transform: translate3d(4%, -3%, 0) scale(1.1) rotate(3deg);
+  }
 }
 
 #root {
@@ -86,21 +138,21 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--purple-dark);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-pill);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--purple-light);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 /* Selection */
 ::selection {
-  background-color: var(--purple-dark);
+  background-color: rgba(139, 92, 246, 0.55);
   color: var(--text-primary);
 }
 
@@ -116,12 +168,41 @@ input,
 textarea,
 select {
   font-family: var(--font-family);
-  background-color: var(--bg-secondary);
+  background-color: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
   padding: var(--spacing-md);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   transition: all var(--transition-fast);
+}
+
+select option {
+  background: #0d1126;
+  color: var(--text-primary);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+select option:checked {
+  background: rgba(139, 92, 246, 0.55);
+  color: white;
+}
+
+select option:hover {
+  background: rgba(139, 92, 246, 0.3);
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a78bfa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--spacing-md) center;
+  background-size: 16px 16px;
+  padding-right: calc(var(--spacing-md) * 2 + 16px);
+  cursor: pointer;
 }
 
 input::placeholder,
@@ -132,8 +213,8 @@ textarea::placeholder {
 input:focus,
 textarea:focus,
 select:focus {
-  border-color: var(--purple-dark);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+  border-color: rgba(167, 139, 250, 0.7);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22);
   outline: none;
 }
 
@@ -220,4 +301,86 @@ a:hover {
 
 .animate-pulse {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Масштабирование дизайн-системы под высокие разрешения (QHD) */
+@media (min-width: 2200px) {
+  :root {
+    --spacing-xs: 5px;
+    --spacing-sm: 10px;
+    --spacing-md: 20px;
+    --spacing-lg: 30px;
+    --spacing-xl: 40px;
+    --spacing-2xl: 60px;
+
+    --font-size-xs: 13px;
+    --font-size-sm: 16px;
+    --font-size-base: 18px;
+    --font-size-lg: 20px;
+    --font-size-xl: 23px;
+    --font-size-2xl: 28px;
+    --font-size-3xl: 38px;
+
+    --radius-lg: 28px;
+    --radius-md: 18px;
+    --radius-sm: 14px;
+
+    --sidebar-width: 340px;
+    --logo-badge: 48px;
+    --icon-lg: 72px;
+    --icon-md: 48px;
+    --avatar-md: 44px;
+    --btn-sm-size: 38px;
+    --select-min-width: 220px;
+    --modal-max-width: 560px;
+    --dialog-max-width: 500px;
+    --card-auth-max-width: 520px;
+    --card-reg-max-width: 540px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+/* Масштабирование дизайн-системы под 4K */
+@media (min-width: 3200px) {
+  :root {
+    --spacing-xs: 6px;
+    --spacing-sm: 12px;
+    --spacing-md: 24px;
+    --spacing-lg: 36px;
+    --spacing-xl: 48px;
+    --spacing-2xl: 72px;
+
+    --font-size-xs: 15px;
+    --font-size-sm: 18px;
+    --font-size-base: 21px;
+    --font-size-lg: 24px;
+    --font-size-xl: 27px;
+    --font-size-2xl: 33px;
+    --font-size-3xl: 46px;
+
+    --radius-lg: 32px;
+    --radius-md: 22px;
+    --radius-sm: 16px;
+
+    --sidebar-width: 400px;
+    --logo-badge: 56px;
+    --icon-lg: 84px;
+    --icon-md: 56px;
+    --avatar-md: 52px;
+    --btn-sm-size: 44px;
+    --select-min-width: 260px;
+    --modal-max-width: 640px;
+    --dialog-max-width: 580px;
+    --card-auth-max-width: 600px;
+    --card-reg-max-width: 620px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 14px;
+    height: 14px;
+  }
 }

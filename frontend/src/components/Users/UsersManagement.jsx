@@ -1,26 +1,11 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../../hooks/useAuth'
-import { userService } from '../../services/api'
+import { userService, authService } from '../../services/api'
+import { ROLE_LABELS, ROLE_OPTIONS } from '../../utils/labels'
+import { useConfirm } from '../../context/ConfirmContext'
+import GlassSelect from '../GlassSelect'
 import styles from './UsersManagement.module.css'
-
-const roleNames = {
-  admin: 'Администратор',
-  headmaster: 'Руководитель',
-  deputy: 'Заместитель',
-  teacher: 'Учитель',
-  tech: 'Техник',
-  storekeeper: 'Складской',
-}
-
-const roleOptions = [
-  { value: 'admin', label: 'Администратор' },
-  { value: 'headmaster', label: 'Руководитель' },
-  { value: 'deputy', label: 'Заместитель' },
-  { value: 'teacher', label: 'Учитель' },
-  { value: 'tech', label: 'Техник' },
-  { value: 'storekeeper', label: 'Складской работник' },
-]
 
 function getInitials(fullName) {
   if (!fullName) return '?'
@@ -34,7 +19,12 @@ function getInitials(fullName) {
 
 export default function UsersManagement() {
   const { token, user: currentUser } = useAuth()
+  const confirm = useConfirm()
   const [users, setUsers] = useState([])
+  const [classrooms, setClassrooms] = useState([])
+  const [pendingRequests, setPendingRequests] = useState([])
+  const [regRoles, setRegRoles] = useState({})
+  const [approvingId, setApprovingId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
@@ -48,7 +38,26 @@ export default function UsersManagement() {
 
   useEffect(() => {
     fetchUsers()
+    fetchPendingRequests()
+    fetchClassrooms()
   }, [])
+
+  const fetchClassrooms = async () => {
+    try {
+      setClassrooms(await authService.getClassrooms(token))
+    } catch (error) {
+      toast.error('Ошибка загрузки кабинетов')
+    }
+  }
+
+  const fetchPendingRequests = async () => {
+    try {
+      const data = await authService.getRegistrationRequests(token)
+      setPendingRequests(data.filter(r => r.status === 'pending'))
+    } catch (error) {
+      toast.error('Ошибка загрузки заявок на регистрацию')
+    }
+  }
 
   const fetchUsers = async () => {
     try {
@@ -105,7 +114,13 @@ export default function UsersManagement() {
   }
 
   const handleDelete = async (user) => {
-    if (!confirm(`Удалить пользователя ${user.full_name}?`)) return
+    const ok = await confirm({
+      title: 'Удаление пользователя',
+      message: `Удалить пользователя ${user.full_name}?`,
+      confirmLabel: 'Удалить',
+      danger: true,
+    })
+    if (!ok) return
 
     try {
       await userService.deleteUser(user.id, token)
@@ -113,6 +128,31 @@ export default function UsersManagement() {
       fetchUsers()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Ошибка удаления')
+    }
+  }
+
+  const handleClassroomChange = async (user, value) => {
+    try {
+      await userService.setUserClassroom(user.id, value ? parseInt(value) : null, token)
+      toast.success(`Кабинет пользователя ${user.full_name} обновлён`)
+      fetchUsers()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Ошибка смены кабинета')
+    }
+  }
+
+  const handleApprove = async (request) => {
+    const role = regRoles[request.id] || 'teacher'
+    setApprovingId(request.id)
+    try {
+      await authService.approveRegistrationRequest(request.id, role, token)
+      toast.success(`Заявка ${request.username} одобрена, роль: ${ROLE_LABELS[role]}`)
+      fetchPendingRequests()
+      fetchUsers()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Ошибка одобрения')
+    } finally {
+      setApprovingId(null)
     }
   }
 
@@ -139,12 +179,45 @@ export default function UsersManagement() {
           </button>
         </div>
 
+        {pendingRequests.length > 0 && (
+          <div className={styles.pendingSection}>
+            <h2 className={styles.pendingTitle}>Ожидают подтверждения</h2>
+            {pendingRequests.map(request => (
+              <div key={request.id} className={styles.pendingCard}>
+                <div className={styles.pendingInfo}>
+                  <span className={styles.pendingName}>{request.full_name}</span>
+                  <span className={styles.pendingUsername}>{request.username}</span>
+                  <span className={styles.pendingDate}>
+                    {new Date(request.created_at).toLocaleDateString('ru-RU')}
+                  </span>
+                </div>
+                <div className={styles.pendingActions}>
+                  <GlassSelect
+                    className={styles.roleSelect}
+                    value={regRoles[request.id] || 'teacher'}
+                    onChange={value => setRegRoles(prev => ({ ...prev, [request.id]: value }))}
+                    options={ROLE_OPTIONS}
+                  />
+                  <button
+                    className={styles.approveBtn}
+                    disabled={approvingId === request.id}
+                    onClick={() => handleApprove(request)}
+                  >
+                    Подтвердить
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className={styles.tableContainer}>
           <table className={styles.table}>
             <thead>
               <tr>
                 <th>Пользователь</th>
                 <th>Роль</th>
+                <th>Кабинет</th>
                 <th>Email</th>
                 <th>Статус</th>
                 <th>Действия</th>
@@ -153,11 +226,11 @@ export default function UsersManagement() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className={styles.emptyState}>Загрузка...</td>
+                  <td colSpan={6} className={styles.emptyState}>Загрузка...</td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className={styles.emptyState}>
+                  <td colSpan={6} className={styles.emptyState}>
                     Нет пользователей. Создайте первого!
                   </td>
                 </tr>
@@ -177,8 +250,19 @@ export default function UsersManagement() {
                     </td>
                     <td>
                       <span className={`${styles.roleBadge} ${styles[user.role]}`}>
-                        {roleNames[user.role] || user.role}
+                        {ROLE_LABELS[user.role] || user.role}
                       </span>
+                    </td>
+                    <td>
+                      <GlassSelect
+                        className={styles.classroomSelect}
+                        value={user.classroom_id ? String(user.classroom_id) : ''}
+                        onChange={value => handleClassroomChange(user, value)}
+                        options={[
+                          { value: '', label: 'Без кабинета' },
+                          ...classrooms.map(c => ({ value: String(c.id), label: c.number })),
+                        ]}
+                      />
                     </td>
                     <td>{user.email || '—'}</td>
                     <td>
@@ -276,16 +360,11 @@ export default function UsersManagement() {
 
                 <div className={styles.formGroup}>
                   <label>Роль</label>
-                  <select
+                  <GlassSelect
                     value={formData.role}
-                    onChange={e => setFormData({ ...formData, role: e.target.value })}
-                  >
-                    {roleOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={value => setFormData({ ...formData, role: value })}
+                    options={ROLE_OPTIONS}
+                  />
                 </div>
               </div>
 

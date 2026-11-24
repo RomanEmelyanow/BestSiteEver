@@ -13,7 +13,6 @@ app.use(express.json());
 // Routes will be added here
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
-import auditRoutes from './routes/audit.js';
 
 // Public endpoint for classrooms (no auth required - needed for registration page)
 import { getClassrooms } from './controllers/auth.controller.js';
@@ -21,7 +20,6 @@ app.get('/api/classrooms', getClassrooms);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/audit', auditRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
