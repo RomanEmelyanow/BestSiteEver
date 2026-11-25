@@ -77,3 +77,11 @@
   background: var(--gradient-purple);
   color: white;
 }
+
+.options { list-style: none; padding: 0; margin: 0; }
+.search {
+  position: sticky; top: 0; width: 100%; padding: 7px 10px;
+  border: 1px solid var(--glass-border); border-radius: 8px;
+  background: #20253d; color: white; font: inherit; font-size: 16px;
+}
+.empty { padding: 10px; color: var(--text-secondary); }

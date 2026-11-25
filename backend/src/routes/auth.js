@@ -1,15 +1,16 @@
 import express from 'express';
 import { body } from 'express-validator';
 import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
+import { validateRequest } from '../middleware/validateRequest.js';
 import * as authController from '../controllers/auth.controller.js';
 
 const router = express.Router();
 
 // POST /api/auth/login
 router.post('/login', [
-  body('username').notEmpty().withMessage('Имя пользователя обязательно'),
-  body('password').notEmpty().withMessage('Пароль обязателен')
-], authController.login);
+  body('username').isString().trim().notEmpty().withMessage('Имя пользователя обязательно'),
+  body('password').isString().notEmpty().withMessage('Пароль обязателен')
+], validateRequest, authController.login);
 
 // POST /api/auth/logout
 router.post('/logout', authenticateToken, authController.logout);
@@ -38,6 +39,9 @@ router.patch('/requests/:id', authenticateToken, authController.updateRequest);
 
 // DELETE /api/auth/requests/:id - удалить заявку из архива (админ)
 router.delete('/requests/:id', authenticateToken, authController.deleteRequest);
+
+// POST /api/auth/requests/:id/reopen - вернуть обработанную заявку во входящие (админ)
+router.post('/requests/:id/reopen', authenticateToken, authController.reopenRequest);
 
 // POST /api/auth/requests/:id/redirect - переадресовать заявку админу/завхозу
 router.post('/requests/:id/redirect', authenticateToken, authController.redirectRequest);

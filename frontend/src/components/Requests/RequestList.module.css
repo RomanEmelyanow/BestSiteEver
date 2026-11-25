@@ -297,3 +297,28 @@
     padding: var(--spacing-lg);
   }
 }
+
+@media (max-width: 768px) {
+  .container, .toolbar, .requestCard, .requestForm { padding: 16px; }
+  .toolbar, .formRow, .requestActions { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .filterGroup, .formGroup { min-width: 0; max-width: none; }
+  .requestInfo { min-width: 0; }
+  .requestCard { overflow-wrap: anywhere; }
+  .archiveStatus { position: static; display: inline-block; margin-bottom: 12px; font-size: 16px; }
+  .archiveHeader { padding-top: 0; }
+  .container button { min-height: 44px; }
+}
+
+.details {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 16px; margin-bottom: 12px;
+  padding: 10px 12px; border-left: 3px solid #aa9bff; border-radius: 6px;
+  background: rgba(12, 15, 35, .64); color: #fff;
+  font-size: 1rem; line-height: 1.5; overflow-wrap: anywhere;
+}
+.details b { color: #d3caff; }
+@media (max-width: 600px) {
+  .details { grid-template-columns: 1fr; gap: 4px; }
+}
+
+.executorComment { margin: 12px 0; padding: 10px 14px; border-left: 3px solid #fca5a5; background: rgba(20, 16, 32, .55); white-space: pre-wrap; overflow-wrap: anywhere; }
+.executorComment strong { display: block; margin-bottom: 4px; color: #fecaca; }

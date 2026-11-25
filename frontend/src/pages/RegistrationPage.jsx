@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { authService } from '../services/api'
 import toast from 'react-hot-toast'
@@ -248,7 +248,7 @@ export default function RegistrationPage() {
         </form>
 
         <div className={styles.footer}>
-          <p>Уже есть аккаунт? <a href="/login">Войти</a></p>
+          <p>Уже есть аккаунт? <Link to="/login">Войти</Link></p>
         </div>
       </div>
     </div>

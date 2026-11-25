@@ -68,6 +68,23 @@ export default function RequestArchive() {
     }
   }
 
+  const handleReopen = async (request) => {
+    const label = request.title || `заявку по кабинету ${request.classroom_number}`
+    const ok = await confirm({
+      title: 'Возврат заявки во входящие',
+      message: `Вернуть «${label}» во входящие? Заявка снова получит статус «Не обработано».`,
+      confirmLabel: 'Вернуть',
+    })
+    if (!ok) return
+    try {
+      await authService.reopenRequest(request.id, token)
+      toast.success('Заявка возвращена во входящие')
+      fetchArchive()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Не удалось вернуть заявку')
+    }
+  }
+
   return (
     <div className={styles.container}>
       <div className={styles.toolbar}>
@@ -128,13 +145,13 @@ export default function RequestArchive() {
                     <div className={styles.requestTitle}>
                       {request.title || `Заявка по кабинету ${request.classroom_number}`}
                     </div>
-                    <div className={styles.requestMeta}>
-                      <span>От: {request.sender_name || '—'}</span>
-                      <span>Адресат: {RECIPIENT_LABELS[request.recipient_group] || request.recipient_group}</span>
-                      <span>Кабинет: {request.classroom_number || '—'}</span>
-                      <span>Дата: {new Date(request.created_at).toLocaleDateString('ru-RU')}</span>
-                    </div>
                   </div>
+                </div>
+                <div className={styles.details}>
+                  <span><b>От:</b> {request.sender_name || '—'}</span>
+                  <span><b>Адресат:</b> {RECIPIENT_LABELS[request.recipient_group] || request.recipient_group}</span>
+                  <span><b>Кабинет:</b> {request.classroom_number || '—'}</span>
+                  <span><b>Дата:</b> {new Date(request.created_at).toLocaleDateString('ru-RU')}</span>
                 </div>
 
                 {request.description && (
@@ -142,11 +159,14 @@ export default function RequestArchive() {
                 )}
 
                 {request.admin_comment && (
-                  <p className={styles.requestDescription}>Комментарий: {request.admin_comment}</p>
+                  <p className={styles.executorComment}><strong>Комментарий исполнителя</strong>{request.admin_comment}</p>
                 )}
 
                 {user?.role === 'admin' && (
                   <div className={styles.requestActions}>
+                    <button className={styles.actionBtn} onClick={() => handleReopen(request)}>
+                      Вернуть из архива
+                    </button>
                     <button className={styles.actionBtn} onClick={() => handleDelete(request)}>
                       Удалить из архива
                     </button>

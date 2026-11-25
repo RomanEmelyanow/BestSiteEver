@@ -7,13 +7,6 @@ import { RECIPIENT_LABELS, statusLabel } from '../../utils/labels'
 import GlassSelect from '../GlassSelect'
 import styles from './RequestList.module.css'
 
-const STATUS_OPTIONS = [
-  { value: '', label: 'Все статусы' },
-  { value: 'sent', label: 'Не обработано' },
-  { value: 'completed', label: 'Выполнено' },
-  { value: 'impossible', label: 'Невозможно выполнить' },
-]
-
 const RECIPIENT_OPTIONS = [
   { value: '', label: 'Все' },
   { value: 'admin', label: 'Админ' },
@@ -24,7 +17,6 @@ export default function RequestIncoming() {
   const { user, token } = useAuth()
   const confirm = useConfirm()
   const [requests, setRequests] = useState([])
-  const [statusFilter, setStatusFilter] = useState('')
   const [recipientFilter, setRecipientFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const isAdmin = user?.role === 'admin'
@@ -35,7 +27,7 @@ export default function RequestIncoming() {
       const data = await authService.getRequests(
         {
           direction: 'incoming',
-          status: statusFilter || undefined,
+          status: 'sent',
           recipient_group: recipientFilter || undefined,
         },
         token
@@ -46,7 +38,7 @@ export default function RequestIncoming() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, recipientFilter, token])
+  }, [recipientFilter, token])
 
   useEffect(() => {
     fetchRequests()
@@ -54,16 +46,17 @@ export default function RequestIncoming() {
 
   const handleProcess = async (request, status) => {
     const label = status === 'completed' ? 'выполнено' : 'невозможно выполнить'
-    const ok = await confirm({
+    const result = await confirm({
+      commentLabel: status === 'impossible' ? 'Комментарий для автора (необязательно)' : undefined,
       title: 'Обработка заявки',
       message: `Закрыть заявку «${request.title || request.classroom_number}» со статусом «${label}»?`,
       confirmLabel: status === 'completed' ? 'Выполнено' : 'Невозможно',
     })
-    if (!ok) {
+    if (!result) {
       return
     }
     try {
-      await authService.updateRequest(request.id, { status }, token)
+      await authService.updateRequest(request.id, { status, admin_comment: result.comment || undefined }, token)
       toast.success('Заявка обработана')
       fetchRequests()
     } catch (error) {
@@ -94,14 +87,6 @@ export default function RequestIncoming() {
     <div className={styles.container}>
       <div className={styles.toolbar}>
         <h2>Входящие заявки</h2>
-        <div className={styles.filterGroup}>
-          <label>Статус</label>
-          <GlassSelect
-            value={statusFilter}
-            onChange={setStatusFilter}
-            options={STATUS_OPTIONS}
-          />
-        </div>
         {isAdmin && (
           <div className={styles.filterGroup}>
             <label>Адресат</label>
@@ -133,13 +118,13 @@ export default function RequestIncoming() {
                   <div className={styles.requestTitle}>
                     {request.title || `Заявка по кабинету ${request.classroom_number}`}
                   </div>
-                  <div className={styles.requestMeta}>
-                    <span>От: {request.sender_name || '—'}</span>
-                    <span>Адресат: {RECIPIENT_LABELS[request.recipient_group] || request.recipient_group}</span>
-                    <span>Кабинет: {request.classroom_number || '—'}</span>
-                    <span>Статус: {statusLabel(request.status, user?.role, request.recipient_group, true)}</span>
-                  </div>
                 </div>
+              </div>
+              <div className={styles.details}>
+                <span><b>От:</b> {request.sender_name || '—'}</span>
+                <span><b>Адресат:</b> {RECIPIENT_LABELS[request.recipient_group] || request.recipient_group}</span>
+                <span><b>Кабинет:</b> {request.classroom_number || '—'}</span>
+                <span><b>Статус:</b> {statusLabel(request.status, user?.role, request.recipient_group, true)}</span>
               </div>
               {request.description && (
                 <p className={styles.requestDescription}>{request.description}</p>

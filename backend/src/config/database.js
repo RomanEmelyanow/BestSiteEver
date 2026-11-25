@@ -1,6 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +37,8 @@ const emptyDb = () => ({
   requests: [],
 });
 
+let transactionData = null;
+
 // Инициализируем базу данных если файла нет
 if (!existsSync(dbPath)) {
   const initialData = {
@@ -48,23 +50,32 @@ if (!existsSync(dbPath)) {
 
 // Вспомогательные функции для работы с базой данных
 const readDb = () => {
+  if (transactionData) return transactionData;
+  const data = readFileSync(dbPath, 'utf-8');
+  const parsed = JSON.parse(data);
+  const base = emptyDb();
+  return { ...base, ...parsed };
+};
+
+const persistDb = (data) => {
+  const tempPath = `${dbPath}.${process.pid}.tmp`;
   try {
-    const data = readFileSync(dbPath, 'utf-8');
-    const parsed = JSON.parse(data);
-    const base = emptyDb();
-    return { ...base, ...parsed };
-  } catch (err) {
-    console.error('Error reading database:', err);
-    return emptyDb();
+    writeFileSync(tempPath, JSON.stringify(data, null, 2));
+    renameSync(tempPath, dbPath);
+  } catch (error) {
+    if (existsSync(tempPath)) {
+      try { unlinkSync(tempPath); } catch {}
+    }
+    throw error;
   }
 };
 
 const writeDb = (data) => {
-  try {
-    writeFileSync(dbPath, JSON.stringify(data, null, 2));
-  } catch (err) {
-    console.error('Error writing database:', err);
+  if (transactionData) {
+    transactionData = data;
+    return;
   }
+  persistDb(data);
 };
 
 const sortRequests = (requests) =>
@@ -72,6 +83,19 @@ const sortRequests = (requests) =>
 
 // Обертка для имитации better-sqlite3 API
 const db = {
+  transaction: (callback) => (...args) => {
+    if (transactionData) throw new Error('Nested database transactions are not supported');
+    transactionData = readDb();
+    try {
+      const result = callback(...args);
+      persistDb(transactionData);
+      transactionData = null;
+      return result;
+    } catch (error) {
+      transactionData = null;
+      throw error;
+    }
+  },
   prepare: (sql) => {
     // Парсим SQL для определения операции
     const lowerSql = sql.toLowerCase().trim();
@@ -82,6 +106,17 @@ const db = {
         get: (...params) => {
           const db = readDb();
           if (sqlNorm.includes('from users')) {
+            if (sqlNorm.includes('where username = ? or email = ?')) {
+              return db.users.find(u =>
+                u.username === params[0] || (params[1] && u.email === params[1])
+              );
+            }
+            if (sqlNorm.includes('where email = ? and id != ?')) {
+              return db.users.find(u => u.email === params[0] && u.id !== parseInt(params[1]));
+            }
+            if (sqlNorm.includes('where email = ?')) {
+              return db.users.find(u => u.email === params[0]);
+            }
             if (sqlNorm.includes('where username = ?')) {
               return db.users.find(u => u.username === params[0]);
             }
@@ -94,13 +129,23 @@ const db = {
             return db.users;
           }
           if (sqlNorm.includes('from classrooms')) {
-            if (sqlNorm.includes('where is_active = ?')) {
-              return db.classrooms.filter(c => c.is_active === 1);
-            }
             if (sqlNorm.includes('where id = ?')) {
-              return db.classrooms.find(c => c.id === parseInt(params[0]));
+              const classroom = db.classrooms.find(c => c.id === parseInt(params[0]));
+              return sqlNorm.includes('is_active = 1') && classroom?.is_active !== 1 ? undefined : classroom;
+            }
+            if (sqlNorm.includes('where is_active = ?')) {
+              return db.classrooms.find(c => c.is_active === params[0]);
+            }
+            if (sqlNorm.includes('where is_active = 1')) {
+              return db.classrooms.find(c => c.is_active === 1);
             }
             return db.classrooms;
+          }
+          if (sqlNorm.includes('from sessions')) {
+            if (sqlNorm.includes('where token_id = ?')) {
+              return db.sessions.find(session => session.token_id === params[0]);
+            }
+            return db.sessions;
           }
           if (sqlNorm.includes('from user_classrooms')) {
             if (sqlNorm.includes('where user_id = ? and classroom_id = ?')) {
@@ -154,8 +199,14 @@ const db = {
             return [...db.users].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
           }
           if (sqlNorm.includes('from classrooms')) {
-            return [...db.classrooms].sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0));
+            const activeFilter = sqlNorm.includes('where is_active = ?')
+              ? params[0]
+              : sqlNorm.includes('where is_active = 1') ? 1 : undefined;
+            return db.classrooms
+              .filter(classroom => activeFilter === undefined || classroom.is_active === activeFilter)
+              .sort((a, b) => (parseInt(a.number) || 0) - (parseInt(b.number) || 0));
           }
+          if (sqlNorm.includes('from sessions')) return [...db.sessions];
           if (sqlNorm.includes('from user_classrooms')) {
             let results = db.user_classrooms;
             if (sqlNorm.includes('user_id = ?')) {
@@ -210,6 +261,11 @@ const db = {
             };
             db.users.push(newUser);
             lastInsertRowid = newUser.id;
+          } else if (sqlNorm.includes('into sessions')) {
+            const [token_id, user_id, created_at] = params;
+            db.sessions = db.sessions.filter(session => session.token_id !== token_id);
+            db.sessions.push({ token_id, user_id, created_at });
+            lastInsertRowid = token_id;
           } else if (sqlNorm.includes('into classrooms')) {
             const [number, is_active] = params;
             const nextId = db.classrooms.reduce((max, c) => Math.max(max, c.id), 0) + 1;
@@ -341,6 +397,16 @@ const db = {
               db.requests.splice(index, 1);
               changes = 1;
             }
+          } else if (sqlNorm.includes('from sessions')) {
+            const before = db.sessions.length;
+            if (sqlNorm.includes('where user_id = ?')) {
+              const userId = parseInt(params[0]);
+              db.sessions = db.sessions.filter(session => session.user_id !== userId);
+            } else {
+              const tokenId = params[0];
+              db.sessions = db.sessions.filter(session => session.token_id !== tokenId);
+            }
+            changes = before - db.sessions.length;
           } else if (sqlNorm.includes('from user_classrooms')) {
             if (sqlNorm.includes('where user_id = ? and classroom_id = ?')) {
               const userId = parseInt(params[0]);

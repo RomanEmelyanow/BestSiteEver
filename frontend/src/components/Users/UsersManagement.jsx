@@ -76,8 +76,8 @@ export default function UsersManagement() {
 
     try {
       if (editingUser) {
-        const { password, ...updateData } = formData
-        if (!password) delete updateData.password
+        const updateData = { ...formData }
+        delete updateData.password
 
         await userService.updateUser(editingUser.id, updateData, token)
         toast.success('Пользователь обновлён')
@@ -237,7 +237,7 @@ export default function UsersManagement() {
               ) : (
                 users.map(user => (
                   <tr key={user.id}>
-                    <td>
+                    <td data-label="Пользователь">
                       <div className={styles.userCell}>
                         <div className={styles.avatar}>
                           {getInitials(user.full_name)}
@@ -248,13 +248,14 @@ export default function UsersManagement() {
                         </div>
                       </div>
                     </td>
-                    <td>
+                    <td data-label="Роль">
                       <span className={`${styles.roleBadge} ${styles[user.role]}`}>
                         {ROLE_LABELS[user.role] || user.role}
                       </span>
                     </td>
-                    <td>
+                    <td data-label="Кабинет">
                       <GlassSelect
+                        searchable
                         className={styles.classroomSelect}
                         value={user.classroom_id ? String(user.classroom_id) : ''}
                         onChange={value => handleClassroomChange(user, value)}
@@ -264,13 +265,13 @@ export default function UsersManagement() {
                         ]}
                       />
                     </td>
-                    <td>{user.email || '—'}</td>
-                    <td>
+                    <td data-label="Email">{user.email || '—'}</td>
+                    <td data-label="Статус">
                       <span className={`${styles.statusBadge} ${user.is_active ? styles.active : styles.inactive}`}>
                         {user.is_active ? 'Активен' : 'Отключён'}
                       </span>
                     </td>
-                    <td>
+                    <td data-label="Действия">
                       <div className={styles.actions}>
                         <button
                           className={styles.actionBtn}
@@ -303,7 +304,7 @@ export default function UsersManagement() {
         <div className={styles.modal} onClick={() => setShowModal(false)}>
           <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <h2>{editingUser ? 'Редактировать пользователя' : 'Новый пользоват��ль'}</h2>
+              <h2>{editingUser ? 'Редактировать пользователя' : 'Новый пользователь'}</h2>
               <button className={styles.closeBtn} onClick={() => setShowModal(false)}>
                 ×
               </button>

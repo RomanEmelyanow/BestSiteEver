@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../hooks/useAuth'
 import styles from './LoginPage.module.css'
@@ -8,8 +8,10 @@ export default function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, user } = useAuth()
   const navigate = useNavigate()
+
+  if (user) return <Navigate to="/admin" replace />
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -78,7 +80,7 @@ export default function LoginPage() {
 
         <div className={styles.footer}>
           <p style={{ fontSize: 'var(--font-size-sm)' }}>
-            Еще нет аккаунта? <a href="/register" style={{ color: 'var(--purple-light)', textDecoration: 'none' }}>Зарегистрируйтесь</a>
+            Еще нет аккаунта? <Link to="/register" style={{ color: 'var(--purple-light)', textDecoration: 'none' }}>Зарегистрируйтесь</Link>
           </p>
         </div>
       </div>

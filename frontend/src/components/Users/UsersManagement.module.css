@@ -131,10 +131,7 @@
 }
 
 .roleBadge.admin { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
-.roleBadge.headmaster { background: rgba(52, 211, 153, 0.18); color: #6ee7b7; }
-.roleBadge.deputy { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
 .roleBadge.teacher { background: rgba(167, 139, 250, 0.2); color: #c4b5fd; }
-.roleBadge.tech { background: rgba(251, 191, 36, 0.18); color: #fcd34d; }
 .roleBadge.storekeeper { background: rgba(45, 212, 191, 0.18); color: #5eead4; }
 .roleBadge.administration { background: rgba(244, 114, 182, 0.18); color: #f9a8d4; }
 
@@ -442,4 +439,15 @@
 .approveBtn:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .header, .pendingActions { flex-wrap: wrap; gap: 10px; }
+  .table, .table tbody, .table tr { display: block; width: 100%; min-width: 0; }
+  .table thead { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; }
+  .table tr { padding: 10px; border-bottom: 1px solid var(--glass-border); }
+  .table td[data-label], .table td:nth-child(4), .table td:nth-child(5) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 6px; white-space: normal; overflow-wrap: anywhere; }
+  .table td[data-label]::before { content: attr(data-label); color: var(--text-tertiary); }
+  .actionBtn { min-width: 44px; min-height: 44px; }
+  .modalContent { max-height: 90dvh; overflow-y: auto; }
 }

@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import styles from './GlassSelect.module.css'
 
-export default function GlassSelect({ value, onChange, options, placeholder = 'Выберите...', className = '', id }) {
+export default function GlassSelect({ value, onChange, options, placeholder = 'Выберите...', className = '', searchable = false, id }) {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
   const rootRef = useRef(null)
   const toggleRef = useRef(null)
@@ -41,8 +42,11 @@ export default function GlassSelect({ value, onChange, options, placeholder = '�
       window.removeEventListener('scroll', update, true)
       window.removeEventListener('resize', update)
     }
-  }, [open])
+  }, [open, query])
 
+  const visible = searchable && query.trim()
+    ? options.filter(opt => opt.value !== '' && String(opt.label).toLowerCase().includes(query.trim().toLowerCase()))
+    : options
   const current = options.find(opt => String(opt.value) === String(value))
 
   return (
@@ -52,7 +56,7 @@ export default function GlassSelect({ value, onChange, options, placeholder = '�
         id={id}
         ref={toggleRef}
         className={styles.toggle}
-        onClick={() => setOpen(prev => !prev)}
+        onClick={() => { setQuery(''); setOpen(prev => !prev) }}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -77,13 +81,25 @@ export default function GlassSelect({ value, onChange, options, placeholder = '�
 
       {open &&
         createPortal(
-          <ul
+          <div
             className={styles.panel}
-            role="listbox"
+            onKeyDown={event => {
+              if (event.key === 'Escape') {
+                setOpen(false)
+                toggleRef.current?.focus()
+              }
+            }}
             ref={panelRef}
             style={{ top: pos.top, left: pos.left, width: pos.width }}
           >
-            {options.map(opt => {
+            {searchable && (
+              <input type="search" inputMode="numeric" autoFocus className={styles.search}
+                aria-label="Поиск по номеру кабинета" placeholder="Номер кабинета"
+                value={query} onChange={event => setQuery(event.target.value)}
+                onKeyDown={event => { if (event.key === 'Enter') event.preventDefault() }} />
+            )}
+            <ul className={styles.options} role="listbox">
+            {visible.map(opt => {
               const selected = String(opt.value) === String(value)
               return (
                 <li
@@ -100,7 +116,9 @@ export default function GlassSelect({ value, onChange, options, placeholder = '�
                 </li>
               )
             })}
-          </ul>,
+            </ul>
+            {visible.length === 0 && <div role="status" className={styles.empty}>Кабинет не найден</div>}
+          </div>,
           document.body
         )}
     </div>

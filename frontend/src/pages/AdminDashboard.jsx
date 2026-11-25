@@ -23,12 +23,16 @@ export default function AdminDashboard() {
     )
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div className="portal-layout">
       <Sidebar />
 
       <Routes>
         <Route
-          path="/"
+          index
+          element={<Navigate to={canReceiveRequests ? "/admin/requests/incoming" : "/admin/requests/outgoing"} replace />}
+        />
+        <Route
+          path="dashboard"
           element={isAdmin ? <Dashboard /> : <Navigate to="/admin/requests/outgoing" replace />}
         />
         <Route
@@ -44,6 +48,7 @@ export default function AdminDashboard() {
           element={canReceiveRequests ? <RequestArchive /> : <Navigate to="/admin/requests/outgoing" replace />}
         />
         <Route path="/requests/outgoing" element={outgoingPanel} />
+        <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     </div>
   )

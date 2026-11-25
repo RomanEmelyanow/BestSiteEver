@@ -384,3 +384,10 @@ a:hover {
     height: 14px;
   }
 }
+
+.portal-layout { display: flex; min-height: 100vh; }
+.portal-layout > * { min-width: 0; }
+@media (max-width: 768px) {
+  .portal-layout { flex-direction: column; }
+  input, textarea, select { font-size: 16px; }
+}

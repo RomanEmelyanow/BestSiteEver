@@ -8,11 +8,9 @@ import styles from './Dashboard.module.css'
 
 const roleStats = {
   admin: { icon: '👑', color: '#7c3aed', name: 'Администраторы' },
-  headmaster: { icon: '🎓', color: '#10b981', name: 'Руководители' },
-  deputy: { icon: '📚', color: '#3b82f6', name: 'Заместители' },
   teacher: { icon: '🧑‍🏫', color: '#8b5cf6', name: 'Учителя' },
-  tech: { icon: '🔧', color: '#f59e0b', name: 'Технический персонал' },
   storekeeper: { icon: '📦', color: '#14b8a6', name: 'Складские работники' },
+  administration: { icon: '🏫', color: '#3b82f6', name: 'Администрация школы' },
 }
 
 export default function Dashboard() {
@@ -22,7 +20,7 @@ export default function Dashboard() {
     totalUsers: 0,
     activeUsers: 0,
     roles: {},
-    recentActivity: [],
+    recentUsers: [],
   })
   const [usersList, setUsersList] = useState([])
   const [classrooms, setClassrooms] = useState([])
@@ -50,12 +48,12 @@ export default function Dashboard() {
         roleCounts[user.role] = (roleCounts[user.role] || 0) + 1
       })
 
-      const recentActivity = users
+      const recentUsers = users
         .slice(0, 5)
         .map(user => ({
-          title: `Создан пользователь ${user.full_name}`,
+          title: user.full_name,
           description: `Роль: ${roleStats[user.role]?.name || user.role}`,
-          time: 'Недавно',
+          time: user.created_at ? new Date(user.created_at).toLocaleDateString('ru-RU') : '',
           icon: '👤',
         }))
 
@@ -68,10 +66,11 @@ export default function Dashboard() {
         totalUsers,
         activeUsers,
         roles: roleCounts,
-        recentActivity,
+        recentUsers,
       })
     } catch (error) {
       console.error('Ошибка загрузки данных:', error)
+      toast.error(error.response?.data?.message || 'Не удалось загрузить панель управления')
     } finally {
       setLoading(false)
     }
@@ -174,13 +173,14 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {Object.entries(stats.roles).slice(0, 2).map(([role, count]) => {
+          {Object.entries(stats.roles).map(([role, count]) => {
             const roleConfig = roleStats[role]
+            const roleColor = roleConfig?.color || '#64748b'
             return (
               <div key={role} className={styles.statCard}>
                 <div
                   className={styles.statIcon}
-                  style={{ background: `linear-gradient(135deg, ${roleConfig?.color} 0%, ${roleConfig?.color}80 100%)` }}
+                  style={{ background: `linear-gradient(135deg, ${roleColor} 0%, ${roleColor}80 100%)` }}
                 >
                   {roleConfig?.icon || '👤'}
                 </div>
@@ -198,15 +198,12 @@ export default function Dashboard() {
 
         <div className={styles.recentActivity}>
           <div className={styles.sectionHeader}>
-            <h2>Недавние действия</h2>
-            <button className={styles.viewAllBtn}>
-              Смотреть все
-            </button>
+            <h2>Последние пользователи</h2>
           </div>
 
-          {stats.recentActivity.length > 0 ? (
+          {stats.recentUsers.length > 0 ? (
             <ul className={styles.activityList}>
-              {stats.recentActivity.map((activity, index) => (
+              {stats.recentUsers.map((activity, index) => (
                 <li key={index} className={styles.activityItem}>
                   <div className={styles.activityIcon}>{activity.icon}</div>
                   <div className={styles.activityContent}>
@@ -221,8 +218,8 @@ export default function Dashboard() {
             </ul>
           ) : (
             <div className={styles.emptyState}>
-              <h3>Нет активности</h3>
-              <p>Когда пользователи будут созданы, они появятся здесь</p>
+              <h3>Пользователей пока нет</h3>
+              <p>Созданные учетные записи появятся здесь</p>
             </div>
           )}
         </div>
@@ -232,6 +229,7 @@ export default function Dashboard() {
             <h2 className={styles.classroomTitle}>Кабинеты</h2>
             <div className={styles.classroomRow}>
               <GlassSelect
+                searchable
                 className={styles.classroomSelect}
                 value={selectedClassroomId}
                 onChange={setSelectedClassroomId}

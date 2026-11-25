@@ -177,8 +177,10 @@ export const deleteClassroom = async (req, res) => {
       return res.status(404).json({ message: 'Кабинет не найден' });
     }
 
-    db.prepare('DELETE FROM user_classrooms WHERE classroom_id = ?').run(id);
-    db.prepare('DELETE FROM classrooms WHERE id = ?').run(id);
+    db.transaction(() => {
+      db.prepare('DELETE FROM user_classrooms WHERE classroom_id = ?').run(id);
+      db.prepare('DELETE FROM classrooms WHERE id = ?').run(id);
+    })();
     res.json({ message: 'Кабинет удалён' });
   } catch (error) {
     console.error('Delete classroom error:', error);
@@ -191,6 +193,9 @@ export const createRequest = async (req, res) => {
   try {
     const { recipient_group, classroom_id, title = '', description = '' } = req.body;
     const sender_id = req.user.id;
+    if (typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ message: 'Введите заголовок заявки' });
+    }
 
     if (!recipient_group || !RECIPIENT_GROUPS.includes(recipient_group)) {
       return res.status(400).json({ message: 'Недопустимый адресат заявки' });
@@ -221,6 +226,12 @@ export const createRequest = async (req, res) => {
 export const getRequests = async (req, res) => {
   try {
     const { direction = 'incoming', status, recipient_group } = req.query;
+    if (!['incoming', 'outgoing'].includes(direction)) {
+      return res.status(400).json({ message: 'Недопустимое направление заявок' });
+    }
+    if (status && !['sent', 'completed', 'impossible', 'archive'].includes(status)) {
+      return res.status(400).json({ message: 'Недопустимый статус заявки' });
+    }
     const dbData = {
       users: db.prepare('SELECT * FROM users').all(),
       classrooms: db.prepare('SELECT * FROM classrooms').all(),
@@ -242,6 +253,9 @@ export const getRequests = async (req, res) => {
 
     if (status === 'archive') {
       requests = requests.filter(r => ['completed', 'impossible'].includes(r.status));
+    } else if (direction === 'incoming') {
+      // Closed requests belong only in the archive, never in incoming work.
+      requests = requests.filter(r => r.status === 'sent');
     } else if (status) {
       requests = requests.filter(r => r.status === status);
     }
@@ -304,11 +318,47 @@ export const deleteRequest = async (req, res) => {
     if (!request) {
       return res.status(404).json({ message: 'Заявка не найдена' });
     }
+    if (!['completed', 'impossible'].includes(request.status)) {
+      return res.status(400).json({ message: 'Удалять можно только обработанные заявки' });
+    }
 
     db.prepare('DELETE FROM requests WHERE id = ?').run(id);
     res.json({ message: 'Заявка удалена из архива' });
   } catch (error) {
     console.error('Delete request error:', error);
+    res.status(500).json({ message: 'Внутренняя ошибка сервера' });
+  }
+};
+
+// Возврат обработанной заявки из архива во входящие (только админ)
+export const reopenRequest = async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Доступ запрещен' });
+    }
+
+    const requestId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+      return res.status(400).json({ message: 'Недопустимый номер заявки' });
+    }
+
+    const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(requestId);
+    if (!request) {
+      return res.status(404).json({ message: 'Заявка не найдена' });
+    }
+    if (!['completed', 'impossible'].includes(request.status)) {
+      return res.status(400).json({ message: 'Вернуть из архива можно только обработанную заявку' });
+    }
+
+    db.prepare(`
+      UPDATE requests
+      SET status = ?, admin_comment = ?, processed_at = ?, processed_by = ?
+      WHERE id = ?
+    `).run('sent', null, null, null, requestId);
+
+    res.json({ message: 'Заявка возвращена во входящие' });
+  } catch (error) {
+    console.error('Reopen request error:', error);
     res.status(500).json({ message: 'Внутренняя ошибка сервера' });
   }
 };
@@ -422,6 +472,9 @@ export const login = async (req, res) => {
 
 export const logout = async (req, res) => {
   try {
+    if (req.user.tokenId) {
+      db.prepare('DELETE FROM sessions WHERE token_id = ?').run(req.user.tokenId);
+    }
     res.json({ message: 'Выход выполнен успешно' });
   } catch (error) {
     console.error('Logout error:', error);
@@ -465,12 +518,16 @@ export const registerRequest = async (req, res) => {
     if (!cleanUsername || !password || !cleanFullName) {
       return res.status(400).json({ message: 'Логин, пароль и ФИО обязательны' });
     }
+    if (typeof password !== 'string') {
+      return res.status(400).json({ message: 'Пароль должен быть строкой' });
+    }
 
     if (password.length < 6) {
       return res.status(400).json({ message: 'Пароль должен быть минимум 6 символов' });
     }
 
-    if (classroomIds !== undefined && classroomIds !== null && (!Array.isArray(classroomIds) || classroomIds.length > 1)) {
+    const requestedClassrooms = classroomIds ?? [];
+    if (!Array.isArray(requestedClassrooms) || requestedClassrooms.length > 1) {
       return res.status(400).json({ message: 'Можно выбрать не более одного кабинета' });
     }
 
@@ -484,7 +541,7 @@ export const registerRequest = async (req, res) => {
       return res.status(409).json({ message: 'Заявка с таким логином уже подана' });
     }
 
-    for (const classroomId of classroomIds) {
+    for (const classroomId of requestedClassrooms) {
       const classroom = db.prepare('SELECT * FROM classrooms WHERE id = ? AND is_active = 1').get(classroomId);
       if (!classroom) {
         return res.status(400).json({ message: `Кабинет ${classroomId} не найден или неактивен` });
@@ -492,6 +549,13 @@ export const registerRequest = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    // A second check closes the race between parallel registration requests.
+    if (db.prepare('SELECT * FROM users WHERE username = ?').get(cleanUsername)) {
+      return res.status(409).json({ message: 'Пользователь с таким логином уже существует' });
+    }
+    if (db.prepare('SELECT * FROM registration_requests WHERE username = ?').get(cleanUsername)) {
+      return res.status(409).json({ message: 'Заявка с таким логином уже подана' });
+    }
 
     const result = db.prepare(`
       INSERT INTO registration_requests (username, password, email, full_name, classroom_ids, status, created_at)
@@ -501,7 +565,7 @@ export const registerRequest = async (req, res) => {
       hashedPassword,
       null,
       cleanFullName,
-      JSON.stringify(classroomIds),
+      JSON.stringify(requestedClassrooms),
       'pending',
       new Date().toISOString()
     );
@@ -527,7 +591,12 @@ export const getRegistrationRequests = async (req, res) => {
       SELECT id, username, email, full_name, status, created_at
       FROM registration_requests
       ORDER BY created_at DESC
-    `).all();
+    `).all().map(request => {
+      const publicRequest = { ...request };
+      delete publicRequest.password;
+      delete publicRequest.classroom_ids;
+      return publicRequest;
+    });
 
     res.json(requests);
   } catch (error) {
@@ -559,30 +628,38 @@ export const approveRegistrationRequest = async (req, res) => {
       return res.status(400).json({ message: 'Заявка уже обработана' });
     }
 
-    const userResult = db.prepare(`
-      INSERT INTO users (username, password, email, role, full_name, is_active, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(request.username, request.password, null, role, request.full_name, 1, new Date().toISOString());
-
-    if (request.classroom_ids) {
-      try {
-        const classroomIds = JSON.parse(request.classroom_ids);
-        for (const classroomId of classroomIds) {
-          db.prepare(`
-            INSERT INTO user_classrooms (user_id, classroom_id, assigned_at)
-            VALUES (?, ?, ?)
-          `).run(userResult.lastInsertRowid, classroomId, new Date().toISOString());
-        }
-      } catch (e) {
-        console.error('Error assigning classrooms:', e);
-      }
+    if (db.prepare('SELECT * FROM users WHERE username = ?').get(request.username)) {
+      return res.status(409).json({ message: 'Пользователь с таким логином уже существует' });
     }
 
-    db.prepare(`
-      UPDATE registration_requests
-      SET status = ?, processed_at = ?, processed_by = ?
-      WHERE id = ?
-    `).run('approved', new Date().toISOString(), req.user.id, id);
+    const classroomIds = request.classroom_ids ? JSON.parse(request.classroom_ids) : [];
+    if (!Array.isArray(classroomIds) || classroomIds.some(classroomId => {
+      const classroom = db.prepare('SELECT * FROM classrooms WHERE id = ? AND is_active = 1').get(classroomId);
+      return !classroom;
+    })) {
+      return res.status(400).json({ message: 'В заявке указан отсутствующий или неактивный кабинет' });
+    }
+
+    const userResult = db.transaction(() => {
+      const createdUser = db.prepare(`
+        INSERT INTO users (username, password, email, role, full_name, is_active, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(request.username, request.password, null, role, request.full_name, 1, new Date().toISOString());
+
+      for (const classroomId of classroomIds) {
+        db.prepare(`
+          INSERT INTO user_classrooms (user_id, classroom_id, assigned_at)
+          VALUES (?, ?, ?)
+        `).run(createdUser.lastInsertRowid, classroomId, new Date().toISOString());
+      }
+
+      db.prepare(`
+        UPDATE registration_requests
+        SET status = ?, processed_at = ?, processed_by = ?
+        WHERE id = ?
+      `).run('approved', new Date().toISOString(), req.user.id, id);
+      return createdUser;
+    })();
 
     res.json({ message: 'Заявка одобрена, пользователь создан', userId: userResult.lastInsertRowid });
   } catch (error) {

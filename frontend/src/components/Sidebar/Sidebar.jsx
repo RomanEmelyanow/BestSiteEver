@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { ROLE_LABELS } from '../../utils/labels'
@@ -14,6 +15,7 @@ import styles from './Sidebar.module.css'
 
 export default function Sidebar() {
   const { user, logout } = useAuth()
+  const [menuOpen, setMenuOpen] = useState(false)
   const navigate = useNavigate()
 
   const isAdmin = user?.role === 'admin'
@@ -38,7 +40,7 @@ export default function Sidebar() {
           {
             title: 'Управление',
             items: [
-              { path: '/admin', label: 'Панель управления', icon: <IconDashboard /> },
+              { path: '/admin/dashboard', label: 'Панель управления', icon: <IconDashboard /> },
               { path: '/admin/users', label: 'Пользователи', icon: <IconUsers /> },
             ],
           },
@@ -52,8 +54,9 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className={styles.sidebar}>
+    <aside className={styles.sidebar} data-open={menuOpen}>
       <div className={styles.logo}>
+        <button type="button" className={styles.menuToggle} aria-expanded={menuOpen} aria-controls="portal-nav" onClick={() => setMenuOpen(open => !open)}>{menuOpen ? 'Закрыть' : 'Меню'}</button>
         <div className={styles.logoBadge}>
           <IconSchool size={22} />
         </div>
@@ -70,7 +73,7 @@ export default function Sidebar() {
         </div>
       )}
 
-      <nav>
+      <nav id="portal-nav">
         {sections.map((section) => (
           <div key={section.title} className={styles.navSection}>
             <h4>{section.title}</h4>
@@ -79,7 +82,8 @@ export default function Sidebar() {
                 <li key={item.path} className={styles.navItem}>
                   <NavLink
                     to={item.path}
-                    end={item.path === '/admin'}
+                    onClick={() => setMenuOpen(false)}
+                    end
                     className={({ isActive }) =>
                       `${styles.navLink} ${isActive ? styles.active : ''}`
                     }

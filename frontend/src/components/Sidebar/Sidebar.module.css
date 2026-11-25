@@ -254,3 +254,28 @@
     margin-bottom: var(--spacing-xl);
   }
 }
+
+.menuToggle { display: none; }
+@media (max-width: 768px) {
+  .sidebar { position: sticky; top: 0; background: #191d38; }
+  .sidebar[data-open="true"] {
+    position: fixed;
+    inset: 0;
+    height: 100vh;
+    height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: linear-gradient(150deg, #1b2548, #211934);
+  }
+  :global(body):has(.sidebar[data-open="true"]) { overflow: hidden; }
+  .sidebar[data-open="true"] ~ * { visibility: hidden; }
+  .navList { flex-direction: column; flex-wrap: nowrap; }
+  .navItem { flex: none; width: 100%; }
+  .navLink { justify-content: flex-start; }
+  .logoBadge { display: none; }
+  .logo { margin: 0; padding: 0; gap: 8px; }
+  .menuToggle { display: block; flex-shrink: 0; min-height: 44px; padding: 0 14px; color: inherit; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); }
+  .sidebar[data-open="false"] > :not(.logo) { display: none; }
+  .userInfo { margin: 12px 0; }
+  .navLink { min-height: 44px; }
+}

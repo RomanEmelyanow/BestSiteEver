@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 // Создаем axios инстанс с автоматическим добавлением токена
 const createAuthClient = (token) => axios.create({
@@ -109,6 +109,12 @@ export const authService = {
   deleteRequest: async (requestId, token) => {
     const client = createAuthClient(token)
     const response = await client.delete(`/auth/requests/${requestId}`)
+    return response.data
+  },
+
+  reopenRequest: async (requestId, token) => {
+    const client = createAuthClient(token)
+    const response = await client.post(`/auth/requests/${requestId}/reopen`)
     return response.data
   },
 

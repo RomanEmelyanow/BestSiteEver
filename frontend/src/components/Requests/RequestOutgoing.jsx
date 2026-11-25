@@ -7,6 +7,7 @@ import GlassSelect from '../GlassSelect'
 import styles from './RequestList.module.css'
 
 const RECIPIENT_OPTIONS = [
+  { value: '', label: 'Выберите адресата' },
   { value: 'admin', label: 'Админ' },
   { value: 'storekeeper', label: 'Завхоз' },
 ]
@@ -20,7 +21,7 @@ export default function RequestOutgoing() {
   const [sending, setSending] = useState(false)
   const [formData, setFormData] = useState({
     classroom_id: '',
-    recipient_group: 'admin',
+    recipient_group: '',
     title: '',
     description: '',
   })
@@ -67,6 +68,10 @@ export default function RequestOutgoing() {
       toast.error('Выберите кабинет')
       return
     }
+    if (!formData.recipient_group || !formData.title.trim()) {
+      toast.error(!formData.recipient_group ? 'Выберите адресата' : 'Введите заголовок')
+      return
+    }
     setSending(true)
     try {
       await authService.createRequest(
@@ -81,6 +86,7 @@ export default function RequestOutgoing() {
       toast.success('Заявка отправлена')
       setFormData(prev => ({
         ...prev,
+        recipient_group: '',
         title: '',
         description: '',
         classroom_id: ownClassrooms.length ? String(ownClassrooms[0].id) : '',
@@ -104,6 +110,7 @@ export default function RequestOutgoing() {
           <div className={styles.filterGroup}>
             <label>Кабинет</label>
             <GlassSelect
+              searchable
               value={formData.classroom_id}
               onChange={(value) => setFormData({ ...formData, classroom_id: value })}
               options={[
@@ -122,14 +129,13 @@ export default function RequestOutgoing() {
             />
           </div>
 
-          <button type="submit" className={styles.refreshBtn} disabled={sending}>
-            {sending ? 'Отправка...' : 'Отправить'}
-          </button>
+
         </div>
 
         <div className={styles.formGroup}>
           <label htmlFor="request-title">Заголовок</label>
           <input
+            required
             id="request-title"
             type="text"
             value={formData.title}
@@ -150,6 +156,9 @@ export default function RequestOutgoing() {
             className={styles.descriptionInput}
           />
         </div>
+        <button type="submit" className={styles.refreshBtn} disabled={sending || !formData.classroom_id || !formData.recipient_group || !formData.title.trim()}>
+            {sending ? 'Отправка...' : 'Отправить'}
+        </button>
       </form>
 
       <div className={styles.toolbar}>
@@ -172,13 +181,17 @@ export default function RequestOutgoing() {
                   <div className={styles.requestTitle}>
                     {request.title || `Заявка по кабинету ${request.classroom_number}`}
                   </div>
-                  <div className={styles.requestMeta}>
-                    <span>Адресат: {RECIPIENT_LABELS[request.recipient_group] || request.recipient_group}</span>
-                    <span>Кабинет: {request.classroom_number || '—'}</span>
-                    <span>Статус: {statusLabel(request.status, user?.role, request.recipient_group)}</span>
-                  </div>
                 </div>
               </div>
+              <div className={styles.details}>
+                <span><b>От:</b> {request.sender_name || '—'}</span>
+                <span><b>Адресат:</b> {RECIPIENT_LABELS[request.recipient_group] || request.recipient_group}</span>
+                <span><b>Кабинет:</b> {request.classroom_number || '—'}</span>
+                <span><b>Статус:</b> {statusLabel(request.status, user?.role, request.recipient_group)}</span>
+              </div>
+              {request.status === 'impossible' && request.admin_comment && (
+                <p className={styles.executorComment}><strong>Комментарий исполнителя</strong>{request.admin_comment}</p>
+              )}
               {request.description && (
                 <p className={styles.requestDescription}>{request.description}</p>
               )}

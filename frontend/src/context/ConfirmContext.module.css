@@ -91,3 +91,6 @@
 .danger:hover {
   box-shadow: 0 6px 24px rgba(239, 68, 68, 0.5);
 }
+
+.commentField { display: grid; gap: 6px; margin: 16px 0; color: var(--text-primary); }
+.commentField textarea { width: 100%; padding: 10px; font: inherit; font-size: 16px; color: inherit; background: #20253d; border: 1px solid var(--glass-border); border-radius: 8px; resize: vertical; }

@@ -1,7 +1,7 @@
 # Школьный внутренний сайт - контекст проекта
 
 ## Что это
-Внутренняя система для администрации, техников и учителей школы. НЕ для школьников!
+Внутренняя система для администрации, завхоза и учителей школы. НЕ для школьников!
 
 ## Архитектура
 - Монорепозиторий с workspaces
@@ -9,12 +9,13 @@
 - Фронтенд: React + Vite, порт 3000
 - API прокси через Vite: `/api` → `http://localhost:5000/api`
 
-## Роли (назначаются ТОЛЬКО через админ-панель)
-admin, headmaster, deputy, teacher, tech, storekeeper
+## Роли (назначаются через админ-панель)
+admin, teacher, storekeeper, administration
 
-## Тестовые данные
-- **Админ**: admin / admin123
-- **API**: http://localhost:5000/api
+## Настройка для локального запуска
+- Скопируйте `backend/.env.example` в `backend/.env` и задайте уникальные `JWT_SECRET` и `INITIAL_ADMIN_PASSWORD`.
+- Инициализируйте администратора командой `npm run init-db --workspace=backend`.
+- **API**: `/api` (Vite проксирует запросы на `http://localhost:5000/api`)
 - **Фронтенд**: http://localhost:3000
 
 ## Дизайн
@@ -24,5 +25,8 @@ admin, headmaster, deputy, teacher, tech, storekeeper
 
 ## Запуск
 ```bash
+npm install
 npm run dev
 ```
+
+Хранилище сейчас JSON-файл `backend/data/school.json`; для нескольких процессов или реальной эксплуатации нужен сервер БД.

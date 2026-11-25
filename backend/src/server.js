@@ -1,13 +1,23 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import './config/loadEnv.js';
 
 const app = express();
 
-// Middleware
-app.use(cors());
+// CORS is limited to configured frontends (and local Vite during development).
+const developmentOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const allowedOrigins = new Set(
+  process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
+    : process.env.NODE_ENV === 'production' ? [] : developmentOrigins
+);
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+    return callback(null, false);
+  },
+}));
 app.use(express.json());
 
 // Routes will be added here

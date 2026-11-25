@@ -3,12 +3,19 @@ import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './context/AuthContext'
 import { ConfirmProvider } from './context/ConfirmContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import { useAuth } from './hooks/useAuth'
 
 // Pages
 import LoginPage from './pages/LoginPage'
 import RegistrationPage from './pages/RegistrationPage'
 import AdminDashboard from './pages/AdminDashboard'
 import NotFoundPage from './pages/NotFoundPage'
+
+function HomeRedirect() {
+  const { isAuthenticated, isLoading } = useAuth()
+  if (isLoading) return <div className="flex-center" style={{ minHeight: '100vh' }}>Загрузка...</div>
+  return <Navigate to={isAuthenticated ? '/admin' : '/login'} replace />
+}
 
 function App() {
   return (
@@ -29,7 +36,7 @@ function App() {
             }
           />
 
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<HomeRedirect />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
         <Toaster

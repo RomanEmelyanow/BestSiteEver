@@ -7,6 +7,11 @@ export const getAllUsers = async (req, res) => {
       SELECT id, username, email, role, full_name, is_active, created_at
       FROM users ORDER BY created_at DESC
     `).all();
+    const publicUsers = users.map(user => {
+      const publicUser = { ...user };
+      delete publicUser.password;
+      return publicUser;
+    });
 
     const links = db.prepare('SELECT * FROM user_classrooms').all();
     const linkByUser = new Map();
@@ -14,7 +19,7 @@ export const getAllUsers = async (req, res) => {
       if (!linkByUser.has(link.user_id)) linkByUser.set(link.user_id, link);
     });
 
-    const enriched = users.map(user => {
+    const enriched = publicUsers.map(user => {
       const link = linkByUser.get(user.id);
       return {
         ...user,
@@ -50,7 +55,9 @@ export const getUserById = async (req, res) => {
       return res.status(404).json({ message: 'Пользователь не найден' });
     }
 
-    res.json(user);
+    const publicUser = { ...user };
+    delete publicUser.password;
+    res.json(publicUser);
   } catch (error) {
     console.error('Get user by id error:', error);
     res.status(500).json({ message: 'Внутренняя ошибка сервера' });
@@ -59,15 +66,24 @@ export const getUserById = async (req, res) => {
 
 export const createUser = async (req, res) => {
   try {
-    const { username, password, email, role, fullName } = req.body;
+    const username = String(req.body.username || '').trim();
+    const password = req.body.password;
+    const email = String(req.body.email || '').trim() || null;
+    const role = req.body.role;
+    const fullName = String(req.body.fullName || '').trim();
 
-    // Проверка уникальности
-    const existingUser = db.prepare('SELECT * FROM users WHERE username = ? OR email = ?').get(username, email);
-    if (existingUser) {
+    const hasDuplicate = () => db.prepare('SELECT * FROM users').all().some(user =>
+      user.username === username || (email && user.email === email)
+    );
+    if (hasDuplicate()) {
       return res.status(400).json({ message: 'Пользователь с таким именем или email уже существует' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    // Recheck after hashing to avoid duplicate accounts from concurrent submissions.
+    if (hasDuplicate()) {
+      return res.status(400).json({ message: 'Пользователь с таким именем или email уже существует' });
+    }
 
     const result = db.prepare(`
       INSERT INTO users (username, password, email, role, full_name)
@@ -91,7 +107,8 @@ export const createUser = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { email, role, fullName, isActive } = req.body;
+    const email = req.body.email === undefined ? undefined : String(req.body.email || '').trim() || null;
+    const { role, fullName, isActive } = req.body;
     const requestingUserId = req.user.id;
     const requestingUserRole = req.user.role;
 
@@ -114,7 +131,9 @@ export const updateUser = async (req, res) => {
 
     // Проверка уникальности email
     if (email && email !== user.email) {
-      const existingEmail = db.prepare('SELECT * FROM users WHERE email = ? AND id != ?').get(email, id);
+      const existingEmail = db.prepare('SELECT * FROM users').all().some(
+        candidate => candidate.id !== parseInt(id) && candidate.email === email
+      );
       if (existingEmail) {
         return res.status(400).json({ message: 'Email уже занят' });
       }
@@ -135,14 +154,21 @@ export const updateUser = async (req, res) => {
       return res.json({ message: 'Нечего обновлять' });
     }
 
-    db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    db.transaction(() => {
+      db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+      if (role !== undefined || isActive !== undefined) {
+        db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+      }
+    })();
 
     const updatedUser = db.prepare(`
       SELECT id, username, email, role, full_name, is_active, created_at
       FROM users WHERE id = ?
     `).get(id);
 
-    res.json(updatedUser);
+    const publicUser = { ...updatedUser };
+    delete publicUser.password;
+    res.json(publicUser);
   } catch (error) {
     console.error('Update user error:', error);
     res.status(500).json({ message: 'Внутренняя ошибка сервера' });
@@ -159,19 +185,27 @@ export const setUserClassroom = async (req, res) => {
       return res.status(404).json({ message: 'Пользователь не найден' });
     }
 
-    db.prepare('DELETE FROM user_classrooms WHERE user_id = ?').run(id);
-
+    let classroom = null;
     if (classroomId !== null && classroomId !== undefined && classroomId !== '') {
-      const cid = parseInt(classroomId);
-      const classroom = db.prepare('SELECT * FROM classrooms WHERE id = ? AND is_active = 1').get(cid);
-      if (!classroom) {
+      const cid = Number(classroomId);
+      if (!Number.isSafeInteger(cid) || cid <= 0) {
+        return res.status(400).json({ message: 'Неверный кабинет' });
+      }
+      classroom = db.prepare('SELECT * FROM classrooms WHERE id = ? AND is_active = 1').get(cid);
+      if (!classroom || Array.isArray(classroom)) {
         return res.status(400).json({ message: 'Кабинет не найден' });
       }
-      db.prepare(`
-        INSERT INTO user_classrooms (user_id, classroom_id, assigned_at)
-        VALUES (?, ?, ?)
-      `).run(id, cid, new Date().toISOString());
     }
+
+    db.transaction(() => {
+      db.prepare('DELETE FROM user_classrooms WHERE user_id = ?').run(id);
+      if (classroom) {
+        db.prepare(`
+          INSERT INTO user_classrooms (user_id, classroom_id, assigned_at)
+          VALUES (?, ?, ?)
+        `).run(id, classroom.id, new Date().toISOString());
+      }
+    })();
 
     res.json({ message: 'Кабинет обновлён' });
   } catch (error) {
@@ -195,8 +229,11 @@ export const deleteUser = async (req, res) => {
       return res.status(404).json({ message: 'Пользователь не найден' });
     }
 
-    db.prepare('DELETE FROM users WHERE id = ?').run(id);
-    db.prepare('DELETE FROM user_classrooms WHERE user_id = ?').run(id);
+    db.transaction(() => {
+      db.prepare('DELETE FROM users WHERE id = ?').run(id);
+      db.prepare('DELETE FROM user_classrooms WHERE user_id = ?').run(id);
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+    })();
 
     res.json({ message: 'Пользователь удален' });
   } catch (error) {
